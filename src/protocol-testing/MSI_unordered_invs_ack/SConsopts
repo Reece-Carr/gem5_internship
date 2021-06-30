@@ -1,0 +1,7 @@
+Import('*')
+
+all_protocols.extend([
+'MSI_UNORDERED_INVS_ACK'
+])
+
+protocol_dirs.append(str(Dir('.').abspath))

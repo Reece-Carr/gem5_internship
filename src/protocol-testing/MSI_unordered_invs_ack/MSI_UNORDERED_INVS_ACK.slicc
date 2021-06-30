@@ -1,0 +1,6 @@
+protocol "MSI_UNORDERED_INVS_ACK";
+include "RubySlicc_interfaces.slicc";
+include "MSI_unordered_invs_ack_msg.sm";
+include "MSI_unordered_invs_ack_cache.sm";
+include "MSI_unordered_invs_ack_dir.sm";
+include "MSI_unordered_invs_ack_dma.sm";

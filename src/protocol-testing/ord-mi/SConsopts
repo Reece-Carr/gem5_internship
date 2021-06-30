@@ -1,0 +1,7 @@
+Import('*')
+
+all_protocols.extend([
+'ORD_MI',
+])
+
+protocol_dirs.append(str(Dir('.').abspath))

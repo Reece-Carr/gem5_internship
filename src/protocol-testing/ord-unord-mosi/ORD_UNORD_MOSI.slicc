@@ -1,0 +1,6 @@
+protocol "ORD_UNORD_MOSI";
+include "RubySlicc_interfaces.slicc";
+include "MOSI_msg.sm";
+include "MOSI_cache.sm";
+include "MOSI_dir.sm";
+include "MOSI_dma.sm";

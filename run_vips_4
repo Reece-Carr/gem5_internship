@@ -1,0 +1,5 @@
+cd /home/gem5/parsec-benchmark
+source env.sh
+parsecmgmt -a run -p         vips -c gcc-hooks -i simsmall -n 4
+sleep 5 
+m5 exit 

@@ -1,0 +1,7 @@
+Import('*')
+
+all_protocols.extend([
+'JASON_MSI_TWO_LEVEL',
+])
+
+protocol_dirs.append(str(Dir('.').abspath))

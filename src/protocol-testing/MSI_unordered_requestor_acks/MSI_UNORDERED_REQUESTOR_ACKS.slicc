@@ -1,0 +1,6 @@
+protocol "MSI_UNORDERED_REQUESTOR_ACKS";
+include "RubySlicc_interfaces.slicc";
+include "MSI_unordered_requestor_acks_msg.sm";
+include "MSI_unordered_requestor_acks_cache.sm";
+include "MSI_unordered_requestor_acks_dir.sm";
+include "MSI_unordered_requestor_acks_dma.sm";

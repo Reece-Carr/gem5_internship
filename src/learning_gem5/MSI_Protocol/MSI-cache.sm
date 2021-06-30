@@ -1,0 +1,785 @@
+//SLICC.ModularSLICC.cache.GenCacheHeader
+machine(MachineType:L1Cache, "Cache controller")
+: Sequencer *sequencer;
+  CacheMemory *cache;
+  bool send_evictions;
+
+  // The following latencies should be exposed as command-line parameters in a future update
+  Cycles responseLatency := 1;
+
+  // Required networks
+  MessageBuffer *mandatoryQueue;
+
+  // Dynamic networks
+  MessageBuffer *respTo, network="To", virtual_network="0", vnet_type="resp";
+  MessageBuffer *respFrom, network="From", virtual_network="0", vnet_type="resp";
+  MessageBuffer *fwdFrom, network="From", virtual_network="1", vnet_type="fwd";
+  MessageBuffer *reqTo, network="To", virtual_network="2", vnet_type="req";
+
+{
+  //SLICC.ModularSLICC.cache.GenCacheStateDecl
+  state_declaration(State, desc="L1Cache states", default="L1Cache_State_I") {
+    I, AccessPermission:Invalid, desc="... TODO ...";
+    I_load, AccessPermission:Invalid, desc="... TODO ...";
+    I_store, AccessPermission:Invalid, desc="... TODO ...";
+    I_store_GetM_Ack_AD, AccessPermission:Busy, desc="... TODO ...";
+    I_x_M_evict, AccessPermission:Invalid, desc="... TODO ...";
+    I_x_S_evict, AccessPermission:Invalid, desc="... TODO ...";
+    M, AccessPermission:Read_Write, desc="... TODO ...";
+    M_evict, AccessPermission:Busy, desc="... TODO ...";
+    S, AccessPermission:Read_Only, desc="... TODO ...";
+    S_evict, AccessPermission:Busy, desc="... TODO ...";
+    S_store, AccessPermission:Read_Only, desc="... TODO ...";
+    S_store_GetM_Ack_AD, AccessPermission:Read_Only, desc="... TODO ...";
+  }
+  //SLICC.ModularSLICC.cache.GenCacheEvents
+  enumeration(Event, desc="Cache events") {
+    PutAck,         desc="Response from directory after we issue a put. ";
+    DataDirNoAcks,  desc="Data from directory (acks = 0)";
+    DataDirAcks,    desc="Data from directory (acks > 0)";
+    Inv, desc="...";
+    Store, desc="...";
+    InvAck, desc="...";
+    LastInvAck, desc="...";
+    Fwd_GetM, desc="...";
+    Fwd_GetS, desc="...";
+    EvictionCallback, desc="...";
+    EvictionCallback_dealloc, desc="...";
+    Replacement, desc="...";
+    MloadMEvent, desc="M->M upon local load hit.";
+    SloadSEvent, desc="S->S upon local load hit.";
+    MstoreMEvent, desc="M->M upon local store hit.";
+    externalloadMfwdfrom_in, desc="Remote load hit ending in state M. Should pop fwdfrom_in.";
+    externalloadSfwdfrom_in, desc="Remote load hit ending in state S. Should pop fwdfrom_in.";
+    externalstoreMfwdfrom_in, desc="Remote store hit ending in state M. Should pop fwdfrom_in.";
+    externalloadMreqfrom_in, desc="Remote load hit ending in state M. Should pop reqfrom_in.";
+    externalloadSreqfrom_in, desc="Remote load hit ending in state S. Should pop reqfrom_in.";
+    externalstoreMreqfrom_in, desc="Remote store hit ending in state M. Should pop reqfrom_in.";
+    externalloadMrespfrom_in, desc="Remote load hit ending in state M. Should pop respfrom_in.";
+    externalloadSrespfrom_in, desc="Remote load hit ending in state S. Should pop respfrom_in.";
+    externalstoreMrespfrom_in, desc="Remote store hit ending in state M. Should pop respfrom_in.";
+    deallocfwdfrom_in, desc="Event indicating the cache line should be deallocated following a message received on fwdfrom_in.";
+    deallocreqfrom_in, desc="Event indicating the cache line should be deallocated following a message received on reqfrom_in.";
+    deallocrespfrom_in, desc="Event indicating the cache line should be deallocated following a message received on respfrom_in.";
+    allocI_load, desc="Event indicating cache cache_entry alloc before moving to I_load.";
+    allocI_store, desc="Event indicating cache cache_entry alloc before moving to I_store.";
+    Stall, desc="...";
+  }
+  //SLICC.ModularSLICC.cache.GenCacheStruct
+  structure(Entry, desc="Stored variables of the Cache machine", interface="AbstractCacheEntry") {
+    State CacheState, desc="Cache state";
+    DataBlock DataBlk, desc="... TODO ...";
+    int acksReceivedL1, default=0, desc="...TODO...";
+    int acksExpectedL1, default=0, desc="...TODO...";
+  }
+  //SLICC.ModularSLICC.cache.GenCacheTBE
+  structure(TBE, desc="TBE entries for L1Cache machine") {
+    Addr PhysicalAddress, desc="physical address";
+    State TBEState,       desc="Transient State";
+    DataBlock DataBlk,    desc="Data to be written";
+  
+  }
+  
+  structure(TBETable, external="yes"){
+    TBE lookup(Addr);
+    void allocate(Addr);
+    void deallocate(Addr);
+    bool isPresent(Addr);
+  }
+  
+  TBETable TBEs, template="<L1Cache_TBE>", constructor="m_number_of_TBEs";
+  
+  void set_tbe(TBE b);
+  void unset_tbe();
+  //SLICC.ModularSLICC.cache.GenCacheStaticFns
+  Tick clockEdge();
+  void set_cache_entry(AbstractCacheEntry a);
+  void unset_cache_entry();
+  
+  MachineID mapAddressToMachine(Addr addr, MachineType mtype);
+  
+  Entry getCacheEntry(Addr LineAddress), return_by_pointer="yes" {
+    return static_cast(Entry, "pointer", cache.lookup(LineAddress));
+  }
+  
+  State getState(TBE tbe, Entry cache_entry, Addr LineAddress) {
+    if (is_valid(cache_entry)) {
+      return cache_entry.CacheState;
+    } else {
+      return State:I;
+    }
+  }
+  
+  void setState(TBE tbe, Entry cache_entry, Addr LineAddress, State state) {
+    if (is_valid(cache_entry)) {
+      cache_entry.CacheState := state;
+    }
+  }
+  
+  AccessPermission getAccessPermission(Addr LineAddress) {
+    Entry cache_entry := getCacheEntry(LineAddress);
+    if (is_valid(cache_entry)) {
+      return L1Cache_State_to_permission(cache_entry.CacheState);
+    } else {
+      return AccessPermission:NotPresent;
+    }
+  }
+  
+  void setAccessPermission(Entry cache_entry, Addr LineAddress, State state) {
+    if (is_valid(cache_entry)) {
+      cache_entry.changePermission(L1Cache_State_to_permission(state));
+    }
+  }
+  
+  void functionalRead(Addr addr, Packet *pkt) {
+      TBE tbe := TBEs[addr];
+      if(is_valid(tbe)) {
+          testAndRead(addr, tbe.DataBlk, pkt);
+      } else {
+          testAndRead(addr, getCacheEntry(addr).DataBlk, pkt);
+      }
+  }
+  
+  int functionalWrite(Addr addr, Packet *pkt) {
+      int num_functional_writes := 0;
+      num_functional_writes := num_functional_writes +
+              testAndWrite(addr, getCacheEntry(addr).DataBlk, pkt);
+      return num_functional_writes;
+  }
+  
+  //SLICC.ModularSLICC.cache.GenCacheOutPorts
+  out_port(reqto_out, CoherenceMessage, reqTo);
+  out_port(respto_out, CoherenceMessage, respTo);
+  //SLICC.ModularSLICC.cache.GenCacheInPorts
+  in_port(respfrom_in, CoherenceMessage, respFrom) {
+    if (respfrom_in.isReady(clockEdge())) {
+      peek (respfrom_in, CoherenceMessage) {
+        TBE tbe := TBEs[in_msg.LineAddress];
+        Entry cache_entry := getCacheEntry(in_msg.LineAddress);
+        State st := getState(tbe, cache_entry, in_msg.LineAddress);
+        Addr LineAddress := in_msg.LineAddress;
+        if (st == State:I) {
+          error("Got response in state I?");
+        } else if (st == State:I_load) {      
+          if (in_msg.Type == CoherenceMessageType:GetS_Ack) {
+            trigger(Event:DataDirNoAcks, LineAddress, cache_entry, tbe);
+          } else {
+            trigger(Event:Stall, LineAddress, cache_entry, tbe);
+            }
+        } else if (st == State:I_store) {      
+          if (in_msg.Type == CoherenceMessageType:GetM_Ack_AD) {
+            if (in_msg.acksExpected == cache_entry.acksReceivedL1)  {
+              trigger(Event:DataDirNoAcks, LineAddress, cache_entry, tbe);
+            } else if (in_msg.acksExpected != cache_entry.acksReceivedL1)  {
+              trigger(Event:DataDirAcks, LineAddress, cache_entry, tbe);
+            }
+          } else if (in_msg.Type == CoherenceMessageType:GetM_Ack_D) {
+            trigger(Event:DataDirNoAcks, LineAddress, cache_entry, tbe);
+          } else if (in_msg.Type == CoherenceMessageType:Inv_Ack) {
+            if (cache_entry.acksExpectedL1 == cache_entry.acksReceivedL1 + 1) {
+              trigger(Event:LastInvAck, LineAddress, cache_entry, tbe);
+            } else {
+              trigger(Event:InvAck, LineAddress, cache_entry, tbe);
+            }
+          } else {
+            trigger(Event:Stall, LineAddress, cache_entry, tbe);
+        }
+        } else if (st == State:I_store_GetM_Ack_AD) {      
+          if (in_msg.Type == CoherenceMessageType:Inv_Ack) {
+            if (cache_entry.acksExpectedL1 == cache_entry.acksReceivedL1 + 1) {
+              trigger(Event:LastInvAck, LineAddress, cache_entry, tbe);
+            } else {
+              trigger(Event:InvAck, LineAddress, cache_entry, tbe);
+            }
+          } else {
+            trigger(Event:Stall, LineAddress, cache_entry, tbe);
+        }
+        } else if (st == State:I_x_M_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Put_Ack) {
+            error("Put ack on resp?");
+          } else {
+            trigger(Event:Stall, LineAddress, cache_entry, tbe);
+        }
+        } else if (st == State:I_x_S_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Put_Ack) {
+            error("Put ack on resp?");
+          } else {
+            trigger(Event:Stall, LineAddress, cache_entry, tbe);
+        }
+        } else if (st == State:M) {      
+          if (in_msg.Type == CoherenceMessageType:Fwd_GetM) {
+            error("Fwd_GetM on resp?");
+          } else if (in_msg.Type == CoherenceMessageType:Fwd_GetS) {
+            error("Fwd_GetS on resp?");
+          } else {
+            trigger(Event:Stall, LineAddress, cache_entry, tbe);
+        }
+        } else if (st == State:M_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Fwd_GetM) {
+            error("Fwd_GetM on resp?");
+          } else if (in_msg.Type == CoherenceMessageType:Fwd_GetS) {
+            error("Fwd_GetS on resp?");
+          } else if (in_msg.Type == CoherenceMessageType:Put_Ack) {
+            error("Put_Ack on resp?");
+          } else {
+            trigger(Event:Stall, LineAddress, cache_entry, tbe);
+          }
+        } else if (st == State:S) {      
+          if (in_msg.Type == CoherenceMessageType:Inv) {
+            error("Inv on resp port?");
+          } else {
+            trigger(Event:Stall, LineAddress, cache_entry, tbe);
+          }
+        } else if (st == State:S_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Inv) {
+            error("Inv on resp port?");
+          } else if (in_msg.Type == CoherenceMessageType:Put_Ack) {
+            error("Put_Ack on resp port?");
+          } else {
+            trigger(Event:Stall, LineAddress, cache_entry, tbe);
+          }
+        } else if (st == State:S_store) {      
+          if (in_msg.Type == CoherenceMessageType:GetM_Ack_AD) {
+            if (in_msg.acksExpected == cache_entry.acksReceivedL1)  {
+              trigger(Event:DataDirNoAcks, LineAddress, cache_entry, tbe);
+            } else if (in_msg.acksExpected != cache_entry.acksReceivedL1)  {
+              trigger(Event:DataDirAcks, LineAddress, cache_entry, tbe);
+            }
+          } else if (in_msg.Type == CoherenceMessageType:GetM_Ack_D) {
+            trigger(Event:DataDirNoAcks, LineAddress, cache_entry, tbe);
+          } else if (in_msg.Type == CoherenceMessageType:Inv) {
+            error("Inv on resp port?");
+          } else if (in_msg.Type == CoherenceMessageType:Inv_Ack) {
+            if (cache_entry.acksExpectedL1 == cache_entry.acksReceivedL1 + 1) {
+              trigger(Event:LastInvAck, LineAddress, cache_entry, tbe);
+            } else {
+              trigger(Event:InvAck, LineAddress, cache_entry, tbe);
+            }
+          } else {
+            trigger(Event:Stall, LineAddress, cache_entry, tbe);
+          }
+        } else if (st == State:S_store_GetM_Ack_AD) {      
+          if (in_msg.Type == CoherenceMessageType:Inv_Ack) {
+            if (cache_entry.acksExpectedL1 == cache_entry.acksReceivedL1 + 1) {
+              trigger(Event:LastInvAck, LineAddress, cache_entry, tbe);
+            } else {
+              trigger(Event:InvAck, LineAddress, cache_entry, tbe);
+            }
+          } else {
+            trigger(Event:Stall, LineAddress, cache_entry, tbe);
+          }
+        } else {
+          trigger(Event:Stall, LineAddress, cache_entry, tbe);
+        }
+      }
+    }
+  }
+  
+  in_port(fwdfrom_in, CoherenceMessage, fwdFrom) {
+    if (fwdfrom_in.isReady(clockEdge())) {
+      peek (fwdfrom_in, CoherenceMessage) {
+        TBE tbe := TBEs[in_msg.LineAddress];
+        Entry cache_entry := getCacheEntry(in_msg.LineAddress);
+        State st := getState(tbe, cache_entry, in_msg.LineAddress);
+        Addr LineAddress := in_msg.LineAddress;
+        if (st == State:I) {
+          error("Got fwd message in I?");
+        } else if (st == State:I_load) {      
+          if (in_msg.Type == CoherenceMessageType:GetS_Ack) {
+            error("Got GetS_Ack message on fwd network?");
+          } else {
+            trigger(Event:Stall, LineAddress, cache_entry, tbe);
+          }
+        } else if (st == State:I_store) {      
+          if (in_msg.Type == CoherenceMessageType:GetM_Ack_AD) {
+            error("Got GetM_Ack_AD message on fwd network?");
+          } else if (in_msg.Type == CoherenceMessageType:GetM_Ack_D) {
+            error("Got GetM_Ack_D message on fwd network?");
+          } else if (in_msg.Type == CoherenceMessageType:Inv_Ack) {
+            error("Got Inv_Ack message on fwd network?");
+          } else {
+            trigger(Event:Stall, LineAddress, cache_entry, tbe);
+          }
+        } else if (st == State:I_store_GetM_Ack_AD) {      
+          if (in_msg.Type == CoherenceMessageType:Inv_Ack) {
+            error("Got Inv_Ack message on fwd network?");
+          } else {
+            trigger(Event:Stall, LineAddress, cache_entry, tbe);
+          }
+        } else if (st == State:I_x_M_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Put_Ack) {
+            trigger(Event:PutAck, LineAddress, cache_entry, tbe);
+          } else {
+            trigger(Event:Stall, LineAddress, cache_entry, tbe);
+          }
+        } else if (st == State:I_x_S_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Put_Ack) {
+            trigger(Event:PutAck, LineAddress, cache_entry, tbe);
+          } else {
+            trigger(Event:Stall, LineAddress, cache_entry, tbe);
+          }
+        } else if (st == State:M) {      
+          if (in_msg.Type == CoherenceMessageType:Fwd_GetM) {
+            trigger(Event:Fwd_GetM, LineAddress, cache_entry, tbe);
+          } else if (in_msg.Type == CoherenceMessageType:Fwd_GetS) {
+            trigger(Event:Fwd_GetS, LineAddress, cache_entry, tbe);
+          } else {
+            trigger(Event:Stall, LineAddress, cache_entry, tbe);
+          }
+        } else if (st == State:M_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Fwd_GetM) {
+            trigger(Event:Fwd_GetM, LineAddress, cache_entry, tbe);
+          } else if (in_msg.Type == CoherenceMessageType:Fwd_GetS) {
+            trigger(Event:Fwd_GetS, LineAddress, cache_entry, tbe);
+          } else if (in_msg.Type == CoherenceMessageType:Put_Ack) {
+            trigger(Event:PutAck, LineAddress, cache_entry, tbe);
+          } else {
+            trigger(Event:Stall, LineAddress, cache_entry, tbe);
+          }
+        } else if (st == State:S) {      
+          if (in_msg.Type == CoherenceMessageType:Inv) {
+            trigger(Event:Inv, in_msg.LineAddress, cache_entry, tbe);
+          } else {
+            trigger(Event:Stall, LineAddress, cache_entry, tbe);
+          }
+        } else if (st == State:S_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Inv) {
+            trigger(Event:Inv, in_msg.LineAddress, cache_entry, tbe);
+          } else if (in_msg.Type == CoherenceMessageType:Put_Ack) {
+            trigger(Event:PutAck, LineAddress, cache_entry, tbe);
+          } else {
+            trigger(Event:Stall, LineAddress, cache_entry, tbe);
+          }
+        } else if (st == State:S_store) {      
+          if (in_msg.Type == CoherenceMessageType:GetM_Ack_AD) {
+            error("Got GetM_Ack_AD on fwd network?");
+          } else if (in_msg.Type == CoherenceMessageType:GetM_Ack_D) {
+            error("Got GetM_Ack_D on fwd network?");
+          } else if (in_msg.Type == CoherenceMessageType:Inv) {
+            trigger(Event:Inv, in_msg.LineAddress, cache_entry, tbe);
+          } else if (in_msg.Type == CoherenceMessageType:Inv_Ack) {
+            error("Got Inv_Ack on fwd network?");
+          } else {
+            trigger(Event:Stall, LineAddress, cache_entry, tbe);
+          }
+        } else if (st == State:S_store_GetM_Ack_AD) {      
+          if (in_msg.Type == CoherenceMessageType:Inv_Ack) {
+            error("Got Inv_Ack on fwd network?");
+          } else {
+            trigger(Event:Stall, LineAddress, cache_entry, tbe);
+          }
+        } else {
+          trigger(Event:Stall, LineAddress, cache_entry, tbe);
+        }
+      }
+    }
+  }
+  
+  in_port(mandatory_in, RubyRequest, mandatoryQueue) {
+    if (mandatory_in.isReady(clockEdge())) {
+      peek(mandatory_in, RubyRequest, block_on="LineAddress") {
+        Entry cache_entry := getCacheEntry(in_msg.LineAddress);
+        TBE tbe := TBEs[in_msg.LineAddress];
+  
+        if (is_invalid(cache_entry) &&
+            cache.cacheAvail(in_msg.LineAddress) == false ) {
+          Addr LineAddress := cache.cacheProbe(in_msg.LineAddress);
+          Entry cache_entry := getCacheEntry(LineAddress);
+          TBE tbe := TBEs[LineAddress];
+          State st := getState(tbe, cache_entry, LineAddress);
+          if (st == State:M) {
+            trigger(Event:Replacement, LineAddress, cache_entry, tbe);
+          } else if (st == State:S) {
+            trigger(Event:Replacement, LineAddress, cache_entry, tbe);
+          } else {
+            trigger(Event:Stall, LineAddress, cache_entry, tbe);
+          }
+        } else {
+          State st := getState(tbe, cache_entry, in_msg.LineAddress);
+          Addr LineAddress := in_msg.LineAddress;
+          if (in_msg.Type == RubyRequestType:LD ||
+              in_msg.Type == RubyRequestType:IFETCH) {
+            if (st == State:I) {
+              trigger(Event:allocI_load, LineAddress, cache_entry, tbe);
+            } else if (st == State:M) {
+              trigger(Event:MloadMEvent, LineAddress, cache_entry, tbe);
+            } else if (st == State:S || st == State:S_store || st == State:S_store_GetM_Ack_AD) {
+              trigger(Event:SloadSEvent, LineAddress, cache_entry, tbe);
+            } else {
+              trigger(Event:Stall, LineAddress, cache_entry, tbe);
+            }
+          } else if (in_msg.Type == RubyRequestType:ST) {
+            if (st == State:I) {
+              trigger(Event:allocI_store, LineAddress, cache_entry, tbe);
+            } else if (st == State:M) {
+              trigger(Event:MstoreMEvent, LineAddress, cache_entry, tbe);
+            } else if (st == State:S) {
+              trigger(Event:Store, LineAddress, cache_entry, tbe);
+            } else {
+              trigger(Event:Stall, LineAddress, cache_entry, tbe);
+            }
+          } else {
+            error("Unexpected message type from processor");
+          }
+        }
+      }
+    }
+  }
+  //SLICC.ModularSLICC.cache.GenCacheActions
+    action(loadHit, "Lh", desc="Load hit") {
+        assert(is_valid(cache_entry));
+        // Set this entry as the most recently used for the replacement policy
+        cache.setMRU(cache_entry);
+        // Send the data back to the sequencer/CPU. NOTE: False means it was
+        // not an "external hit", but hit in this local cache.
+        sequencer.readCallback(address, cache_entry.DataBlk, false);
+    }
+
+    action(storeHit, "Sh", desc="Store hit") {
+        assert(is_valid(cache_entry));
+        cache.setMRU(cache_entry);
+        // The same as the read callback above.
+        sequencer.writeCallback(address, cache_entry.DataBlk, false);
+    }
+  action(deallocEntry, "d", desc="Deallocate an cache_entry") {
+      assert(is_valid(cache_entry));
+      cache.deallocate(address);
+      unset_cache_entry();
+  }
+  action(allocEntry, "a", desc="Allocate an cache_entry") {
+     assert(is_invalid(cache_entry));
+     assert(cache.cacheAvail(address));
+     set_cache_entry(cache.allocate(address, new Entry));
+  }
+  
+  action(remote_loadHit, "rLh", desc="Callback remote load hit.") {
+    // Signal to gem5 that this load/read access was a hit remotely
+    // (i.e. was satisfied through the coherence interface)
+    assert(is_valid(cache_entry));
+    cache.setMRU(cache_entry);
+    sequencer.readCallback(address, cache_entry.DataBlk, true);
+  }
+  
+  action(remote_storeHit, "rSh", desc="Callback remote store hit.") {
+    // Signal to gem5 that this load/read access was a hit remotely
+    // (i.e. was satisfied through the coherence interface)
+    assert(is_valid(cache_entry));
+    cache.setMRU(cache_entry);
+    sequencer.writeCallback(address, cache_entry.DataBlk, true);
+  }
+  
+  action(popmandatory_in, "pmandatory_in0", desc="Pop the mandatory_in queue.") {
+      // Sometimes we need to be able to pop a queue/in_port from within a transition
+      // rather than from within the in_port itself. Thus, we need an action for this,
+      // since transitions cannot execute non-action functions.
+      mandatory_in.dequeue(clockEdge());
+  }
+  action(popfwdfrom_in, "pfwdfrom_in0", desc="Pop the fwdfrom_in queue.") {
+      // Sometimes we need to be able to pop a queue/in_port from within a transition
+      // rather than from within the in_port itself. Thus, we need an action for this,
+      // since transitions cannot execute non-action functions.
+      fwdfrom_in.dequeue(clockEdge());
+  }
+  action(poprespfrom_in, "prespfrom_in0", desc="Pop the respfrom_in queue.") {
+      // Sometimes we need to be able to pop a queue/in_port from within a transition
+      // rather than from within the in_port itself. Thus, we need an action for this,
+      // since transitions cannot execute non-action functions.
+      respfrom_in.dequeue(clockEdge());
+  }
+  action(actionI_I_load, "II0", desc="TODO") {
+    peek(mandatory_in, RubyRequest) {
+      Addr LineAddress := in_msg.LineAddress;
+      enqueue(reqto_out, CoherenceMessage, responseLatency) {
+        out_msg.LineAddress := LineAddress;
+        out_msg.MessageSize := MessageSizeType:Control;
+        out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+        out_msg.Type := CoherenceMessageType:GetS;
+        out_msg.Sender := machineID;
+      }
+    }
+  }
+  action(actionI_I_store, "II1", desc="TODO") {
+    peek(mandatory_in, RubyRequest) {
+      Addr LineAddress := in_msg.LineAddress;
+      enqueue(reqto_out, CoherenceMessage, responseLatency) {
+        out_msg.LineAddress := LineAddress;
+        out_msg.MessageSize := MessageSizeType:Control;
+        out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+        out_msg.Type := CoherenceMessageType:GetM;
+        out_msg.Sender := machineID;
+      }
+      cache_entry.acksReceivedL1 := 0;
+      cache_entry.acksExpectedL1 := 0;
+    }
+  }
+  action(stall, "s", desc="So called z-stall") {
+      // z_stall
+  }
+  action(forwardEviction, "e", desc="sends eviction notification to CPU") {
+      if (send_evictions) {
+          sequencer.evictionCallback(address);
+      }
+  }
+  action(sendPutS, "pS", desc="Send PutS to the directory") {
+      enqueue(reqto_out, CoherenceMessage, 1) {
+          out_msg.LineAddress := address;
+          out_msg.Type := CoherenceMessageType:PutS;
+          out_msg.Destination.add(mapAddressToMachine(address,
+                                  MachineType:Directory));
+          out_msg.MessageSize := MessageSizeType:Control;
+          out_msg.Sender := machineID;
+      }
+  }
+
+    action(sendGetSAckToReq, "cdsR", desc="Send cache data to requestor") {
+        // We have to peek into the request to see who to send to.
+        // If we are in both the peek and the enqueue block then we have access
+        // to both in_msg and out_msg.
+        assert(is_valid(cache_entry));
+        peek(fwdfrom_in, CoherenceMessage) {
+            enqueue(respto_out, CoherenceMessage, 1) {
+                out_msg.LineAddress := address;
+                out_msg.Type := CoherenceMessageType:GetS_Ack;
+                out_msg.Destination.add(in_msg.Sender);
+                out_msg.cl := cache_entry.DataBlk;
+                out_msg.MessageSize := MessageSizeType:Data;
+                out_msg.Sender := machineID;
+            }
+        }
+    }
+    action(sendCacheDataToDir, "cdD", desc="Send the cache data to the dir") {
+        enqueue(respto_out, CoherenceMessage, 1) {
+            out_msg.LineAddress := address;
+            out_msg.Type := CoherenceMessageType:WB;
+            out_msg.Destination.add(mapAddressToMachine(address,
+                                    MachineType:Directory));
+            out_msg.cl := cache_entry.DataBlk;
+            out_msg.MessageSize := MessageSizeType:Data;
+            out_msg.Sender := machineID;
+        }
+    }
+    action(sendGetMAckDToReq, "cdmR", desc="Send cache data to requestor") {
+        // We have to peek into the request to see who to send to.
+        // If we are in both the peek and the enqueue block then we have access
+        // to both in_msg and out_msg.
+        assert(is_valid(cache_entry));
+        peek(fwdfrom_in, CoherenceMessage) {
+            enqueue(respto_out, CoherenceMessage, 1) {
+                out_msg.LineAddress := address;
+                out_msg.Type := CoherenceMessageType:GetM_Ack_D;
+                out_msg.Destination.add(in_msg.Sender);
+                out_msg.cl := cache_entry.DataBlk;
+                out_msg.MessageSize := MessageSizeType:Data;
+                out_msg.Sender := machineID;
+            }
+        }
+    }
+  action(sendPutM, "pM", desc="Send putM+data to the directory") {
+      enqueue(reqto_out, CoherenceMessage, 1) {
+          out_msg.LineAddress := address;
+          out_msg.Type := CoherenceMessageType:PutM;
+          out_msg.Destination.add(mapAddressToMachine(address,
+                                  MachineType:Directory));
+          out_msg.cl := cache_entry.DataBlk;
+          out_msg.MessageSize := MessageSizeType:Data;
+          out_msg.Sender := machineID;
+      }
+  }
+  action(sendInvAcktoReq, "iaR", desc="Send inv-ack to requestor") {
+      peek(fwdfrom_in, CoherenceMessage) {
+          enqueue(respto_out, CoherenceMessage, 1) {
+              out_msg.LineAddress := address;
+              out_msg.Type := CoherenceMessageType:Inv_Ack;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.cl := cache_entry.DataBlk;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Sender := machineID;
+          }
+      }
+  }
+  action(decrAcks, "da", desc="Decrement the number of acks") {
+      assert(is_valid(cache_entry));
+      cache_entry.acksReceivedL1 := cache_entry.acksReceivedL1 + 1;
+      // This annotates the protocol trace
+      APPEND_TRANSITION_COMMENT("Acks received: ");
+      APPEND_TRANSITION_COMMENT(cache_entry.acksReceivedL1);
+  }
+    action(storeAcks, "sa", desc="Store the needed acks to the TBE") {
+        assert(is_valid(cache_entry));
+        peek(respfrom_in, CoherenceMessage) {
+            cache_entry.acksExpectedL1 := in_msg.acksExpected;
+        }
+        assert(cache_entry.acksExpectedL1 > 0);
+    }
+    action(zeroAcks, "za", desc="Store the needed acks to the TBE") {
+        assert(is_valid(cache_entry));
+        cache_entry.acksExpectedL1 := 0;
+        cache_entry.acksReceivedL1 := 0;
+    }
+    action(writeDataToCache, "wd", desc="Write data to the cache") {
+        peek(respfrom_in, CoherenceMessage) {
+            assert(is_valid(cache_entry));
+            cache_entry.DataBlk := in_msg.cl;
+        }
+    }
+    action(sendGetM, "gM", desc="Send GetM to the directory") {
+        enqueue(reqto_out, CoherenceMessage, 1) {
+            out_msg.LineAddress := address;
+            out_msg.Type := CoherenceMessageType:GetM;
+            out_msg.Destination.add(mapAddressToMachine(address,
+                                    MachineType:Directory));
+            out_msg.MessageSize := MessageSizeType:Control;
+            out_msg.Sender := machineID;
+        }
+    }
+    action(externalStoreHit, "xSh", desc="External store hit (was a miss)") {
+        assert(is_valid(cache_entry));
+        peek(respfrom_in, CoherenceMessage) {
+            cache.setMRU(cache_entry);
+            sequencer.writeCallback(address, cache_entry.DataBlk, true,
+                                   // Note: this could be the last ack.
+                                   machineIDToMachineType(in_msg.Sender));
+        }
+    }
+    action(externalLoadHit, "xLh", desc="External load hit (was a miss)") {
+        assert(is_valid(cache_entry));
+        peek(respfrom_in, CoherenceMessage) {
+            cache.setMRU(cache_entry);
+            // Forward the type of machine that responded to this request
+            // E.g., another cache or the directory. This is used for tracking
+            // statistics.
+            sequencer.readCallback(address, cache_entry.DataBlk, true,
+                                   machineIDToMachineType(in_msg.Sender));
+        }
+    }
+    action(sendGetS, 'gS', desc="Send GetS to the directory") {
+        // The syntax for enqueue is a lot like peek. Instead of populating
+        // in_msg, enqueue has an out_msg reference. Whatever you set on out_msg
+        // is sent through the out port specified.  "request_out" is the port
+        // we're sending the message out of "CoherenceMessage" is the type of message
+        // we're sending "1" is the latency (in cycles) the port waits before
+        // sending the message.
+        enqueue(reqto_out, CoherenceMessage, 1) {
+            out_msg.LineAddress := address;
+            // This type is defined in MSI-msg.sm for this protocol.
+            out_msg.Type := CoherenceMessageType:GetS;
+            // The destination may change depending on the address striping
+            // across different directories, so query the network.
+            out_msg.Destination.add(mapAddressToMachine(address,
+                                    MachineType:Directory));
+            // See mem/ruby/protocol/RubySlicc_Exports.sm for possible sizes.
+            out_msg.MessageSize := MessageSizeType:Control;
+            // Set that the reqeustor is this machine so we get the response.
+            out_msg.Sender := machineID;
+        }
+    }
+
+
+  //SLICC.ModularSLICC.cache.GenCacheTransitions
+  transition(I, allocI_store, I_store) {
+      allocEntry;
+      actionI_I_store;
+      popmandatory_in;
+  }
+  transition(I, allocI_load, I_load) {
+      allocEntry;
+      actionI_I_load;
+      popmandatory_in;
+  }
+  transition({S, S_store, S_store_GetM_Ack_AD, M}, {SloadSEvent, MloadMEvent}) {
+    loadHit;
+    popmandatory_in;
+  }
+  transition(M, MstoreMEvent, M) {
+    storeHit;
+    popmandatory_in;
+  }
+  transition({I, I_load, I_store, I_store_GetM_Ack_AD, I_x_M_evict, I_x_S_evict, M, M_evict, S, S_evict, S_store, S_store_GetM_Ack_AD}, Stall) {
+      stall;
+  }
+  transition(M, Replacement, M_evict) {
+      sendPutM;
+      forwardEviction;
+  }
+  transition(S, Replacement, S_evict) {
+      sendPutS;
+      forwardEviction;
+  }
+  transition(M_evict, Fwd_GetS, S_evict) {
+      sendGetSAckToReq;
+      sendCacheDataToDir;
+      popfwdfrom_in;
+  }
+  transition(M, Fwd_GetS, S) {
+      sendGetSAckToReq;
+      sendCacheDataToDir;
+      popfwdfrom_in;
+  }
+  transition(M, Fwd_GetM, I) {
+      sendGetMAckDToReq;
+      forwardEviction;
+      deallocEntry;
+      popfwdfrom_in;
+  }
+  transition(M_evict, Fwd_GetM, I_x_M_evict) {
+      sendGetMAckDToReq;
+      popfwdfrom_in;
+  }
+  transition(S_evict, Inv, I_x_S_evict) {
+      sendInvAcktoReq;
+      popfwdfrom_in;
+  }
+  transition(S_store, Inv, I_store) {
+      sendInvAcktoReq;
+      forwardEviction;
+      popfwdfrom_in;
+  }
+  transition(S, Inv, I) {
+      sendInvAcktoReq;
+      forwardEviction;
+      deallocEntry;
+      popfwdfrom_in;
+  }
+  transition({I_store_GetM_Ack_AD, S_store_GetM_Ack_AD}, LastInvAck, M) {
+      externalStoreHit;
+      zeroAcks;
+      poprespfrom_in;
+  }
+  transition({I_store_GetM_Ack_AD, S_store_GetM_Ack_AD, I_store, S_store}, InvAck) {
+      decrAcks;
+      poprespfrom_in;
+  }
+    transition(S_store, DataDirAcks, S_store_GetM_Ack_AD) {
+        writeDataToCache;
+        storeAcks;
+        poprespfrom_in;
+    }
+    transition(I_store, DataDirAcks, I_store_GetM_Ack_AD) {
+        writeDataToCache;
+        storeAcks;
+        poprespfrom_in;
+    }
+    transition({I_store, S_store}, DataDirNoAcks, M) {
+        writeDataToCache;
+        externalStoreHit;
+        zeroAcks;
+        poprespfrom_in;
+    }
+    transition(S, Store, S_store) {
+        zeroAcks;
+        sendGetM;
+        popmandatory_in;
+    }
+  
+    transition(I_load, DataDirNoAcks, S) {
+        writeDataToCache;
+        externalLoadHit;
+        poprespfrom_in;
+    }
+
+    transition({M_evict, S_evict, I_x_M_evict, I_x_S_evict}, PutAck, I) {
+        deallocEntry;
+        popfwdfrom_in;
+    }
+}
+// EOF<cache>

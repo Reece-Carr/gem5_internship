@@ -1,0 +1,7 @@
+Import('*')
+
+all_protocols.extend([
+'MSI_TWO_LEVEL_Z_STALL'
+])
+
+protocol_dirs.append(str(Dir('.').abspath))

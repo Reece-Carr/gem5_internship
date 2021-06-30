@@ -1,0 +1,7 @@
+Import('*')
+
+all_protocols.extend([
+'CHI_Ord_Ack',
+])
+
+protocol_dirs.append(str(Dir('.').abspath))

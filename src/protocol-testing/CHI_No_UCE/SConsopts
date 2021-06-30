@@ -1,0 +1,7 @@
+Import('*')
+
+all_protocols.extend([
+'CHI_No_UCE',
+])
+
+protocol_dirs.append(str(Dir('.').abspath))

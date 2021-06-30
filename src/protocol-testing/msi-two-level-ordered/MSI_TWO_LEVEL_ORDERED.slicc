@@ -1,0 +1,7 @@
+protocol "MSI_TWO_LEVEL_ORDERED";
+include "RubySlicc_interfaces.slicc";
+include "msg.sm";
+include "L1Cache.sm";
+include "L2Cache.sm";
+include "dir.sm";
+include "dma.sm";

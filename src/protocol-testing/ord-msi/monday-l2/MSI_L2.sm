@@ -1,0 +1,379 @@
+machine(MachineType:Directory, "LLC")
+ : CacheMemory * cache;
+   Cycles toMemLatency := 5;
+   Cycles responseLatency := 1;
+
+   MessageBuffer * requestToL2, network="From", virtual_network="3",
+        vnet_type="request";
+   MessageBuffer * responseFromL2, network="To", virtual_network="4",
+        vnet_type="response";
+
+   MessageBuffer * requestToMemory;
+   MessageBuffer * responseFromMemory;
+{
+  // STATES
+  state_declaration(State, desc="Directory states", default="Directory_State_I") {
+    // Base states
+    I, AccessPermission:Read_Write, desc="not present in L2";
+    V, AccessPermission:Maybe_Stale, desc="present in L2";
+    VI, AccessPermission:Maybe_Stale, desc="V->I waiting for mem ack in L2";
+    IV, AccessPermission:Read_Write, desc="I->V waiting for mem data in L2";
+    II, AccessPermission:Read_Write, desc="not present in L2";
+  }
+
+  // Events
+  enumeration(Event, desc="Directory events") {
+    Fetch, desc="A memory fetch arrives";
+    Data, desc="writeback data arrives";
+    Memory_Data, desc="Fetched data from memory arrives";
+    Memory_Ack, desc="Writeback Ack from memory arrives";
+    Replacement, desc="Replacement of cache line";
+
+  }
+
+  // TYPES
+
+  // DirectoryEntry
+  structure(Entry, desc="...", interface="AbstractCacheEntry", main="false") {
+    State DirectoryState,          desc="Directory state";
+    DataBlock DataBlk,           desc="Directory cacheline value";
+  }
+
+  // TBE entries for DMA requests
+  structure(TBE, desc="TBE entries for outstanding DMA requests") {
+    State TBEState,        desc="Transient State";
+  }
+
+  structure(TBETable, external="yes") {
+    TBE lookup(Addr);
+    void allocate(Addr);
+    void deallocate(Addr);
+    bool isPresent(Addr);
+    bool functionalRead(Packet *pkt);
+    int functionalWrite(Packet *pkt);
+  }
+
+
+  // ** OBJECTS **
+  TBETable TBEs, template="<Directory_TBE>", constructor="m_number_of_TBEs";
+
+  Tick clockEdge();
+  Tick cyclesToTicks(Cycles c);
+  void set_tbe(TBE tbe);
+  void unset_tbe();
+  void wakeUpBuffers(Addr a);
+  void set_cache_entry(AbstractCacheEntry a);
+  void unset_cache_entry();
+  MachineID mapAddressToMachine(Addr addr, MachineType mtype);
+
+  Entry getDirectoryEntry(Addr addr), return_by_pointer="yes" {
+    return static_cast(Entry, "pointer", cache.lookup(addr));
+  }
+
+  State getState(TBE tbe, Addr LineAddress) {
+    Entry cache_entry := getDirectoryEntry(LineAddress);
+    if (is_valid(tbe)) {
+      return tbe.TBEState;
+    } else if (is_valid(cache_entry)) {
+      return cache_entry.DirectoryState;
+    } else {
+      return State:I;
+    }
+  }
+  
+  void setState(TBE tbe, Addr LineAddress, State state) {
+    Entry cache_entry := getDirectoryEntry(LineAddress);
+    if (is_valid(tbe)) {
+      tbe.TBEState := state;
+    }
+    if (is_valid(cache_entry)) {
+      cache_entry.DirectoryState := state;
+    }
+    DPRINTF(RubySlicc, "Finished setting state to %d at 0x%x\n", state, LineAddress);
+  }
+
+  AccessPermission getAccessPermission(Addr LineAddress) {
+    TBE tbe := TBEs[LineAddress];
+    if (is_valid(tbe)) {
+      return Directory_State_to_permission(tbe.TBEState);
+    }
+    Entry cache_entry := getDirectoryEntry(LineAddress);
+    if (is_valid(cache_entry)) {
+      return Directory_State_to_permission(cache_entry.DirectoryState);
+    } else {
+      return AccessPermission:NotPresent;
+    }
+  }
+  
+  void setAccessPermission(Addr LineAddress, State state) {
+    Entry cache_entry := getDirectoryEntry(LineAddress);
+    if (is_valid(cache_entry)) {
+      cache_entry.changePermission(Directory_State_to_permission(state));
+    }
+  }
+
+  void functionalRead(Addr addr, Packet *pkt) {
+    testAndRead(addr, getDirectoryEntry(addr).DataBlk, pkt);
+  }
+  
+  int functionalWrite(Addr addr, Packet *pkt) {
+    return 0 + testAndWrite(addr, getDirectoryEntry(addr).DataBlk, pkt);
+  }
+
+
+  // ** OUT_PORTS **
+  out_port(responseNetwork_out, MemoryMsgClone, responseFromL2);
+  out_port(memQueue_out, MemoryMsg, requestToMemory);
+
+  // ** IN_PORTS **
+
+  in_port(requestNetwork_in, MemoryMsgClone, requestToL2, rank = 0) {
+    if (requestNetwork_in.isReady(clockEdge())) {
+      peek(requestNetwork_in, MemoryMsgClone) {
+        assert(in_msg.Destination.isElement(machineID));
+        DPRINTF(RubySlicc, "Received request message %s\n", in_msg.Type);
+
+        Entry cache_entry := getDirectoryEntry(in_msg.addr);
+        if (is_valid(cache_entry) || cache.cacheAvail(in_msg.addr)) {
+            if (in_msg.Type == MemoryMsgCloneType:MEMORY_READ) {
+              trigger(Event:Fetch, in_msg.addr, TBEs[in_msg.addr]);
+            } else if (in_msg.Type == MemoryMsgCloneType:MEMORY_WB) {
+              trigger(Event:Data, in_msg.addr, TBEs[in_msg.addr]);
+            } else {
+              DPRINTF(RubySlicc, "%s\n", in_msg);
+              error("Invalid message");
+            }
+        } else {
+            Addr victim := cache.cacheProbe(in_msg.addr);
+            trigger(Event:Replacement, victim, TBEs[victim]);
+        }
+      }
+    }
+  }
+
+  // off-chip memory request/response is done
+  in_port(memQueue_in, MemoryMsg, responseFromMemory, rank = 1) {
+    if (memQueue_in.isReady(clockEdge())) {
+      peek(memQueue_in, MemoryMsg) {
+        DPRINTF(RubySlicc, "Received mem message %s\n", in_msg.Type);
+        if (in_msg.Type == MemoryRequestType:MEMORY_READ) {
+          trigger(Event:Memory_Data, in_msg.addr, TBEs[in_msg.addr]);
+        } else if (in_msg.Type == MemoryRequestType:MEMORY_WB) {
+          trigger(Event:Memory_Ack, in_msg.addr, TBEs[in_msg.addr]);
+        } else {
+          DPRINTF(RubySlicc, "%s\n", in_msg.Type);
+          error("Invalid message");
+        }
+      }
+    }
+  }
+
+
+  // Actions
+  action(a_sendAck, "a", desc="Send ack to dir") {
+    peek(requestNetwork_in, MemoryMsgClone) {
+      enqueue(responseNetwork_out, MemoryMsgClone, responseLatency) {
+        out_msg.addr := address;
+        out_msg.Type := MemoryMsgCloneType:MEMORY_WB;
+        out_msg.Sender := machineID;
+        out_msg.OriginalRequestorMachId := in_msg.Sender;
+        out_msg.Destination.add(mapAddressToMachine(address, MachineType:Directory));
+        out_msg.MessageSize := MessageSizeType:Response_Control;
+      }
+    }
+  }
+
+  action(d_sendData, "d", desc="Send data to requestor from L2 cache") {
+    Entry cache_entry := getDirectoryEntry(address);
+    assert(is_valid(cache_entry));
+    peek(requestNetwork_in, MemoryMsgClone) {
+      enqueue(responseNetwork_out, MemoryMsgClone, responseLatency) {
+        out_msg.addr := address;
+        out_msg.Type := MemoryMsgCloneType:MEMORY_READ;
+        out_msg.Sender := machineID;
+        out_msg.OriginalRequestorMachId := in_msg.Sender;
+        out_msg.Destination.add(mapAddressToMachine(address, MachineType:Directory));
+        out_msg.DataBlk := cache_entry.DataBlk;
+        out_msg.MessageSize := MessageSizeType:Response_Data;
+      }
+    }
+  }
+
+  action(aa_sendAck, "aa", desc="Send ack to dir from mem port") {
+    peek(memQueue_in, MemoryMsg) {
+      enqueue(responseNetwork_out, MemoryMsgClone, responseLatency) {
+        out_msg.addr := address;
+        out_msg.Type := MemoryMsgCloneType:MEMORY_WB;
+        out_msg.Sender := machineID;
+        out_msg.OriginalRequestorMachId := in_msg.OriginalRequestorMachId;
+        out_msg.Destination.add(mapAddressToMachine(address, MachineType:Directory));
+        out_msg.MessageSize := MessageSizeType:Response_Control;
+      }
+    }
+  }
+
+  action(dd_sendData, "dd", desc="Send data to requestor from mem port") {
+    peek(memQueue_in, MemoryMsg) {
+      enqueue(responseNetwork_out, MemoryMsgClone, responseLatency) {
+        out_msg.addr := address;
+        out_msg.Type := MemoryMsgCloneType:MEMORY_READ;
+        out_msg.Sender := machineID;
+        out_msg.OriginalRequestorMachId := in_msg.OriginalRequestorMachId;
+        out_msg.Destination.add(mapAddressToMachine(address, MachineType:Directory));
+        out_msg.DataBlk := in_msg.DataBlk;
+        out_msg.MessageSize := MessageSizeType:Response_Data;
+      }
+    }
+    DPRINTF(RubySlicc, "Action dd done\n");
+  }
+
+  action(j_popIncomingRequestQueue, "j", desc="Pop incoming request queue") {
+    requestNetwork_in.dequeue(clockEdge());
+  }
+
+  action(l_popMemQueue, "q", desc="Pop off-chip request queue") {
+    memQueue_in.dequeue(clockEdge());
+  }
+
+  action(kd_wakeUpDependents, "kd", desc="wake-up dependents") {
+    wakeUpBuffers(address);
+  }
+
+  action(qf_queueMemoryFetchRequest, "qf", desc="Queue off-chip fetch request") {
+    peek(requestNetwork_in, MemoryMsgClone) {
+      enqueue(memQueue_out, MemoryMsg, 10000) {
+        out_msg.addr := address;
+        out_msg.Type := MemoryRequestType:MEMORY_READ;
+        out_msg.Sender := in_msg.Sender;
+        out_msg.MessageSize := MessageSizeType:Request_Control;
+        out_msg.Len := in_msg.Len;
+      }
+    }
+    DPRINTF(RubySlicc, "Action qf done\n");
+  }
+
+  action(qw_queueMemoryWBRequest, "qw", desc="Queue off-chip writeback request") {
+    peek(requestNetwork_in, MemoryMsgClone) {
+      enqueue(memQueue_out, MemoryMsg, toMemLatency) {
+        out_msg.addr := address;
+        out_msg.Type := MemoryRequestType:MEMORY_WB;
+        out_msg.Sender := in_msg.Sender;
+        out_msg.MessageSize := MessageSizeType:Writeback_Data;
+        out_msg.DataBlk := in_msg.DataBlk;
+        out_msg.Len := in_msg.Len;
+      }
+    }
+  }
+
+  action(qu_queueMemoryWBRequestLocal, "qu", desc="Queue off-chip writeback request from data in L2") {
+    Entry cache_entry := getDirectoryEntry(address);
+    assert(is_valid(cache_entry));
+    enqueue(memQueue_out, MemoryMsg, toMemLatency) {
+      out_msg.addr := address;
+      out_msg.Type := MemoryRequestType:MEMORY_WB;
+      out_msg.Sender := machineID;
+      out_msg.MessageSize := MessageSizeType:Writeback_Data;
+      out_msg.DataBlk := cache_entry.DataBlk;
+      out_msg.Len := 0;
+    }
+  }
+
+  action(wc_writeCacheData, "wc", desc="Write data of a Put to the L2 to the cache line") {
+    Entry cache_entry := getDirectoryEntry(address);
+    assert(is_valid(cache_entry));
+    peek(requestNetwork_in, MemoryMsgClone) {
+        cache_entry.DataBlk := in_msg.DataBlk;
+    }
+  }
+
+  action(vc_writeCacheDataFromMem, "vc", desc="Write data of Mem Read to the L2 cache line") {
+    Entry cache_entry := getDirectoryEntry(address);
+    assert(is_valid(cache_entry));
+    peek(memQueue_in, MemoryMsg) {
+        cache_entry.DataBlk := in_msg.DataBlk;
+    }
+  }
+
+  action(z_stallAndWaitRequest, "z", desc="recycle request queue") {
+    stall_and_wait(requestNetwork_in, address);
+  }
+
+  action(v_allocateTBE, "v", desc="Allocate TBE") {
+    TBEs.allocate(address);
+    set_tbe(TBEs[address]);
+  }
+
+  action(w_deallocateTBE, "w", desc="Deallocate TBE") {
+    TBEs.deallocate(address);
+    unset_tbe();
+  }
+
+  action(vv_allocateEntry, "vv", desc="Allocate L2 entry") {
+    Entry cache_entry := getDirectoryEntry(address);
+    if (is_invalid(cache_entry)) {
+      cache.allocate(address, new Entry);
+    }
+  }
+
+  action(ww_deallocateEntry, "ww", desc="Deallocate L2 entry") {
+    cache.deallocate(address);
+  }
+
+  // TRANSITIONS
+
+  transition(I, Fetch, IV) {
+    vv_allocateEntry;
+    qf_queueMemoryFetchRequest;
+    j_popIncomingRequestQueue;
+  }
+
+  transition(IV, Memory_Data, V) {
+    vc_writeCacheDataFromMem;
+    dd_sendData;
+    l_popMemQueue;
+    kd_wakeUpDependents;
+  }
+
+  transition(I, Data, II) {
+    v_allocateTBE;
+    qw_queueMemoryWBRequest;
+    j_popIncomingRequestQueue;
+  }
+
+  transition(II, Memory_Ack, I) {
+    w_deallocateTBE;
+    l_popMemQueue;
+    kd_wakeUpDependents;
+  }
+
+  transition({V, VI}, Fetch) {
+    d_sendData;
+    j_popIncomingRequestQueue;
+  }
+
+  transition(V, Data) {
+    a_sendAck;
+    wc_writeCacheData;
+    j_popIncomingRequestQueue;
+    kd_wakeUpDependents;
+  }
+
+  transition(V, Replacement, VI) {
+    qu_queueMemoryWBRequestLocal;
+  }
+
+  transition(VI, Memory_Ack, I) {
+    ww_deallocateEntry;
+    l_popMemQueue;
+    kd_wakeUpDependents;
+  }
+
+  transition(IV, Fetch) {
+    z_stallAndWaitRequest;
+  }
+
+  transition({IV, VI}, {Data, Replacement}) {
+    z_stallAndWaitRequest;
+  }
+
+}

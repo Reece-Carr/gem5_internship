@@ -1,0 +1,6 @@
+protocol "CHI_No_UCE";
+include "RubySlicc_interfaces.slicc";
+include "CHI_No_UCE_msg.sm";
+include "CHI_No_UCE_cache.sm";
+include "CHI_No_UCE_dir.sm";
+include "CHI_No_UCE_dma.sm";

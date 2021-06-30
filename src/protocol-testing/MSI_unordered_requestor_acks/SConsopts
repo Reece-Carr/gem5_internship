@@ -1,0 +1,7 @@
+Import('*')
+
+all_protocols.extend([
+'MSI_UNORDERED_REQUESTOR_ACKS',
+])
+
+protocol_dirs.append(str(Dir('.').abspath))

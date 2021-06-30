@@ -1,0 +1,2854 @@
+//SLICC.ModularSLICC.dma.GenDMAHeader
+machine(MachineType:DMA, "DMA (caching) controller")
+: DMASequencer *dma_sequencer;
+  CacheMemory *cache;
+
+  // The following latencies should be exposed as command-line parameters in a future update
+  Cycles responseLatency := 1;
+  Cycles recycleLatency := 10;
+
+  // Required networks
+  MessageBuffer *mandatoryQueue;
+
+  // Dynamic networks
+  MessageBuffer *rspTo, network="To", virtual_network="0", vnet_type="rsp";
+  MessageBuffer *rspFrom, network="From", virtual_network="0", vnet_type="rsp";
+  MessageBuffer *datTo, network="To", virtual_network="1", vnet_type="dat";
+  MessageBuffer *datFrom, network="From", virtual_network="1", vnet_type="dat";
+  MessageBuffer *snpTo, network="To", virtual_network="2", vnet_type="snp";
+  MessageBuffer *snpFrom, network="From", virtual_network="2", vnet_type="snp";
+  MessageBuffer *reqTo, network="To", virtual_network="3", vnet_type="req";
+  MessageBuffer *reqFrom, network="From", virtual_network="3", vnet_type="req";
+
+{
+  //SLICC.ModularSLICC.dma.GenDMAStateDecl
+  state_declaration(State, desc="DMA states", default="DMA_State_I") {
+    E, AccessPermission:Read_Write, desc="... TODO ...";
+    E_evict, AccessPermission:Busy, desc="... TODO ...";
+    E_evict_x_I, AccessPermission:Busy, desc="... TODO ...";
+    I, AccessPermission:Invalid, desc="... TODO ...";
+    I_load, AccessPermission:Busy, desc="... TODO ...";
+    I_store, AccessPermission:Busy, desc="... TODO ...";
+    M, AccessPermission:Read_Write, desc="... TODO ...";
+    M_evict, AccessPermission:Busy, desc="... TODO ...";
+    M_evict_SnpCleanInvalid, AccessPermission:Busy, desc="... TODO ...";
+    M_evict_SnpCleanInvalid_x_I, AccessPermission:Busy, desc="... TODO ...";
+    M_evict_x_I, AccessPermission:Busy, desc="... TODO ...";
+    O, AccessPermission:Read_Only, desc="... TODO ...";
+    O_evict, AccessPermission:Busy, desc="... TODO ...";
+    O_evict_SnpCleanInvalid, AccessPermission:Busy, desc="... TODO ...";
+    O_evict_SnpCleanInvalid_x_I, AccessPermission:Busy, desc="... TODO ...";
+    O_evict_x_I, AccessPermission:Busy, desc="... TODO ...";
+    O_store, AccessPermission:Busy, desc="... TODO ...";
+    S, AccessPermission:Read_Only, desc="... TODO ...";
+    S_evict, AccessPermission:Busy, desc="... TODO ...";
+    S_evict_x_I, AccessPermission:Busy, desc="... TODO ...";
+    S_store, AccessPermission:Busy, desc="... TODO ...";
+  }
+  
+  //SLICC.ModularSLICC.dma.GenDMAEvents
+  enumeration(Event, desc="Cache events") {
+    EloadEEvent, desc="E->E upon local load hit.";
+    MloadMEvent, desc="M->M upon local load hit.";
+    OloadOEvent, desc="O->O upon local load hit.";
+    SloadSEvent, desc="S->S upon local load hit.";
+    EstoreMEvent, desc="E->M upon local store hit.";
+    MstoreMEvent, desc="M->M upon local store hit.";
+    Stallmandatory_in, desc="Stall the mandatory_in port.";
+    
+    externalloadEdatfrom_in, desc="Remote load hit ending in state E. Should pop datfrom_in.";
+    externalloadMdatfrom_in, desc="Remote load hit ending in state M. Should pop datfrom_in.";
+    externalloadOdatfrom_in, desc="Remote load hit ending in state O. Should pop datfrom_in.";
+    externalloadSdatfrom_in, desc="Remote load hit ending in state S. Should pop datfrom_in.";
+    externalstoreMdatfrom_in, desc="Remote store hit ending in state M. Should pop datfrom_in.";
+    deallocdatfrom_in, desc="Event indicating the cache line should be deallocated following a message received on datfrom_in.";
+    Stalldatfrom_in, desc="Stall the datfrom_in port.";
+    
+    externalloadEreqfrom_in, desc="Remote load hit ending in state E. Should pop reqfrom_in.";
+    externalloadMreqfrom_in, desc="Remote load hit ending in state M. Should pop reqfrom_in.";
+    externalloadOreqfrom_in, desc="Remote load hit ending in state O. Should pop reqfrom_in.";
+    externalloadSreqfrom_in, desc="Remote load hit ending in state S. Should pop reqfrom_in.";
+    externalstoreMreqfrom_in, desc="Remote store hit ending in state M. Should pop reqfrom_in.";
+    deallocreqfrom_in, desc="Event indicating the cache line should be deallocated following a message received on reqfrom_in.";
+    Stallreqfrom_in, desc="Stall the reqfrom_in port.";
+    
+    externalloadErspfrom_in, desc="Remote load hit ending in state E. Should pop rspfrom_in.";
+    externalloadMrspfrom_in, desc="Remote load hit ending in state M. Should pop rspfrom_in.";
+    externalloadOrspfrom_in, desc="Remote load hit ending in state O. Should pop rspfrom_in.";
+    externalloadSrspfrom_in, desc="Remote load hit ending in state S. Should pop rspfrom_in.";
+    externalstoreMrspfrom_in, desc="Remote store hit ending in state M. Should pop rspfrom_in.";
+    deallocrspfrom_in, desc="Event indicating the cache line should be deallocated following a message received on rspfrom_in.";
+    Stallrspfrom_in, desc="Stall the rspfrom_in port.";
+    
+    externalloadEsnpfrom_in, desc="Remote load hit ending in state E. Should pop snpfrom_in.";
+    externalloadMsnpfrom_in, desc="Remote load hit ending in state M. Should pop snpfrom_in.";
+    externalloadOsnpfrom_in, desc="Remote load hit ending in state O. Should pop snpfrom_in.";
+    externalloadSsnpfrom_in, desc="Remote load hit ending in state S. Should pop snpfrom_in.";
+    externalstoreMsnpfrom_in, desc="Remote store hit ending in state M. Should pop snpfrom_in.";
+    deallocsnpfrom_in, desc="Event indicating the cache line should be deallocated following a message received on snpfrom_in.";
+    Stallsnpfrom_in, desc="Stall the snpfrom_in port.";
+    
+    allocI_load, desc="Event indicating cache entry + tbe alloc before moving to I_load.";
+    allocI_store, desc="Event indicating cache entry + tbe alloc before moving to I_store.";
+    allocTBE, desc="Allocate a new TBE.";
+    
+    deallocTBE, desc="Deallocate a TBE.";
+    
+    Progress, desc="Progress, please!";
+    
+    tbePopulate, desc="Put partial write info in TBE.";
+  }
+  
+  //SLICC.ModularSLICC.dma.GenDMAStruct
+  structure(Entry, desc="Stored variables of the DMA machine", interface="AbstractCacheEntry") {
+    State DMAState, desc="DMA state";
+  
+    DataBlock cl, desc="... TODO ...";
+  }
+  
+  //SLICC.ModularSLICC.dma.GenDMATBE
+  structure(TBE, desc="TBE entries for DMA controller") {
+    Addr PhysicalAddress, desc="Physical address of the request";
+    DataBlock DataBlk,    desc="Data to be written";
+    int Len,              desc="Length of data to write";
+  
+  }
+  
+  structure(TBETable, external="yes"){
+    TBE lookup(Addr);
+    void allocate(Addr);
+    void deallocate(Addr);
+    bool isPresent(Addr);
+    bool areNSlotsAvailable(int, Tick);
+  }
+  
+  TBETable TBEs, template="<DMA_TBE>", constructor="m_number_of_TBEs";
+  
+  
+  //SLICC.ModularSLICC.dma.GenDMAStaticFns
+  Tick clockEdge();
+  Tick cyclesToTicks(Cycles c);
+  Cycles ticksToCycles(Tick t);
+  void set_cache_entry(AbstractCacheEntry a);
+  void unset_cache_entry();
+  void set_tbe(TBE a);
+  void unset_tbe();
+  
+  MachineID mapAddressToMachine(Addr addr, MachineType mtype);
+  
+  Entry getEntry(Addr LineAddress), return_by_pointer="yes" {
+    return static_cast(Entry, "pointer", cache.lookup(LineAddress));
+  }
+  
+  State getState(TBE tbe, Entry cache_entry, Addr LineAddress) {
+    if (is_valid(cache_entry)) {
+      return cache_entry.DMAState;
+    } else {
+      return State:I;
+    }
+  }
+  
+  void setState(TBE tbe, Entry cache_entry, Addr LineAddress, State state) {
+    if (is_valid(cache_entry)) {
+      cache_entry.DMAState := state;
+    }
+  }
+  
+  AccessPermission getAccessPermission(Addr LineAddress) {
+    Entry cache_entry := getEntry(LineAddress);
+    if (is_valid(cache_entry)) {
+      return DMA_State_to_permission(cache_entry.DMAState);
+    } else {
+      return AccessPermission:NotPresent;
+    }
+  }
+  
+  void setAccessPermission(Entry cache_entry, Addr LineAddress, State state) {
+    if (is_valid(cache_entry)) {
+      cache_entry.changePermission(DMA_State_to_permission(state));
+    }
+  }
+  
+  void functionalRead(Addr addr, Packet *pkt) {
+    testAndRead(addr, getEntry(addr).cl, pkt);
+  }
+  
+  int functionalWrite(Addr addr, Packet *pkt) {
+    return 0 + testAndWrite(addr, getEntry(addr).cl, pkt);
+  }
+  
+  
+  //SLICC.ModularSLICC.dma.GenDMAOutPorts
+  out_port(datto_out, CoherenceMessage, datTo);
+  out_port(reqto_out, CoherenceMessage, reqTo);
+  out_port(rspto_out, CoherenceMessage, rspTo);
+  out_port(snpto_out, CoherenceMessage, snpTo);
+  
+  //SLICC.ModularSLICC.dma.GenDMAInPorts
+  in_port(rspfrom_in, CoherenceMessage, rspFrom) {
+    if (rspfrom_in.isReady(clockEdge())) {
+      peek (rspfrom_in, CoherenceMessage, block_on="LineAddress") {
+        Addr LineAddress := in_msg.LineAddress;
+        TBE tbe := TBEs[LineAddress];
+        State st := getState(tbe, getEntry(LineAddress), LineAddress);
+        if (st == State:E) {
+          if (in_msg.Type == CoherenceMessageType:M_SnpCleanInvalidL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_IL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocrspfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:M_SnpSharedFwdL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_S_Fwded_SL1C1;
+              out_msg.Sender := machineID;
+            }
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:CompData_SL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:S);
+            rspfrom_in.dequeue(clockEdge());
+            trigger(Event:deallocTBE, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallrspfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:E_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Comp_IL1C1) {
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocrspfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:M_SnpCleanInvalidL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_IL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:E_evict_x_I);
+            rspfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:M_SnpSharedFwdL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_S_Fwded_SL1C1;
+              out_msg.Sender := machineID;
+            }
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:CompData_SL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:S_evict);
+            rspfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallrspfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:E_evict_x_I) {      
+          if (in_msg.Type == CoherenceMessageType:Comp_IL1C1) {
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocrspfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallrspfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:I) {      
+          trigger(Event:Stallrspfrom_in, LineAddress, getEntry(LineAddress), tbe);
+        } else if (st == State:I_load) {      
+          if (in_msg.Type == CoherenceMessageType:CompData_EL1C1) {
+            getEntry(LineAddress).cl := in_msg.cl;
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CompAckL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:E);
+            trigger(Event:externalloadErspfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:CompData_SL1C1) {
+            getEntry(LineAddress).cl := in_msg.cl;
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CompAckL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:S);
+            trigger(Event:externalloadSrspfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallrspfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:I_store) {      
+          if (in_msg.Type == CoherenceMessageType:Comp_EL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CompAckL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:M);
+            trigger(Event:externalstoreMrspfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallrspfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:M) {      
+          if (in_msg.Type == CoherenceMessageType:M_SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocrspfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:M_SnpSharedFwdL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_O_Fwded_SL1C1;
+              out_msg.Sender := in_msg.Sender;
+            }
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:CompData_SL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O);
+            rspfrom_in.dequeue(clockEdge());
+            trigger(Event:deallocTBE, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallrspfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:M_evict) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_M_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocrspfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:M_SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:M_evict_x_I);
+            rspfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:M_SnpSharedFwdL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_O_Fwded_SL1C1;
+              out_msg.Sender := in_msg.Sender;
+            }
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:CompData_SL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O_evict);
+            rspfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:M_evict_SnpCleanInvalid);
+            rspfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallrspfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:M_evict_SnpCleanInvalid) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_IL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocrspfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallrspfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:M_evict_SnpCleanInvalid_x_I) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_IL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocrspfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallrspfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:M_evict_x_I) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_M_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocrspfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:M_evict_SnpCleanInvalid_x_I);
+            rspfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallrspfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:O) {      
+          if (in_msg.Type == CoherenceMessageType:O_SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := in_msg.Sender;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocrspfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:O_SnpSharedFwdL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_O_Fwded_SL1C1;
+              out_msg.Sender := machineID;
+            }
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:CompData_SL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O);
+            rspfrom_in.dequeue(clockEdge());
+            trigger(Event:deallocTBE, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallrspfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:O_evict) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_O_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocrspfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:O_SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := in_msg.Sender;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O_evict_x_I);
+            rspfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:O_SnpSharedFwdL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_O_Fwded_SL1C1;
+              out_msg.Sender := machineID;
+            }
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:CompData_SL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O_evict);
+            rspfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := in_msg.Sender;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O_evict_SnpCleanInvalid);
+            rspfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallrspfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:O_evict_SnpCleanInvalid) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_IL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocrspfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallrspfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:O_evict_SnpCleanInvalid_x_I) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_IL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocrspfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallrspfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:O_evict_x_I) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_O_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocrspfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := in_msg.Sender;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O_evict_SnpCleanInvalid_x_I);
+            rspfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallrspfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:O_store) {      
+          if (in_msg.Type == CoherenceMessageType:Comp_EL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CompAckL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:M);
+            trigger(Event:externalstoreMrspfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:O_SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := in_msg.Sender;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I_store);
+            rspfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:O_SnpSharedFwdL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_O_Fwded_SL1C1;
+              out_msg.Sender := machineID;
+            }
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:CompData_SL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O_store);
+            rspfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallrspfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:S) {      
+          if (in_msg.Type == CoherenceMessageType:SnpCleanInvalidL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_IL1C1;
+              out_msg.Sender := in_msg.Sender;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocrspfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallrspfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:S_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Comp_IL1C1) {
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocrspfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:SnpCleanInvalidL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_IL1C1;
+              out_msg.Sender := in_msg.Sender;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:S_evict_x_I);
+            rspfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallrspfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:S_evict_x_I) {      
+          if (in_msg.Type == CoherenceMessageType:Comp_IL1C1) {
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocrspfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallrspfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:S_store) {      
+          if (in_msg.Type == CoherenceMessageType:Comp_EL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CompAckL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:M);
+            trigger(Event:externalstoreMrspfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:SnpCleanInvalidL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_IL1C1;
+              out_msg.Sender := in_msg.Sender;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I_store);
+            rspfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallrspfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else {
+          trigger(Event:Stallrspfrom_in, LineAddress, getEntry(LineAddress), tbe);
+        }
+      }
+    }
+  }
+  
+  in_port(datfrom_in, CoherenceMessage, datFrom) {
+    if (datfrom_in.isReady(clockEdge())) {
+      peek (datfrom_in, CoherenceMessage, block_on="LineAddress") {
+        Addr LineAddress := in_msg.LineAddress;
+        TBE tbe := TBEs[LineAddress];
+        State st := getState(tbe, getEntry(LineAddress), LineAddress);
+        if (st == State:E) {
+          if (in_msg.Type == CoherenceMessageType:M_SnpCleanInvalidL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_IL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocdatfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:M_SnpSharedFwdL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_S_Fwded_SL1C1;
+              out_msg.Sender := machineID;
+            }
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:CompData_SL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:S);
+            datfrom_in.dequeue(clockEdge());
+            trigger(Event:deallocTBE, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stalldatfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:E_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Comp_IL1C1) {
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocdatfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:M_SnpCleanInvalidL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_IL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:E_evict_x_I);
+            datfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:M_SnpSharedFwdL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_S_Fwded_SL1C1;
+              out_msg.Sender := machineID;
+            }
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:CompData_SL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:S_evict);
+            datfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stalldatfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:E_evict_x_I) {      
+          if (in_msg.Type == CoherenceMessageType:Comp_IL1C1) {
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocdatfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stalldatfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:I) {      
+          trigger(Event:Stalldatfrom_in, LineAddress, getEntry(LineAddress), tbe);
+        } else if (st == State:I_load) {      
+          if (in_msg.Type == CoherenceMessageType:CompData_EL1C1) {
+            getEntry(LineAddress).cl := in_msg.cl;
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CompAckL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:E);
+            trigger(Event:externalloadEdatfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:CompData_SL1C1) {
+            getEntry(LineAddress).cl := in_msg.cl;
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CompAckL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:S);
+            trigger(Event:externalloadSdatfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stalldatfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:I_store) {      
+          if (in_msg.Type == CoherenceMessageType:Comp_EL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CompAckL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:M);
+            trigger(Event:externalstoreMdatfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stalldatfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:M) {      
+          if (in_msg.Type == CoherenceMessageType:M_SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocdatfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:M_SnpSharedFwdL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_O_Fwded_SL1C1;
+              out_msg.Sender := in_msg.Sender;
+            }
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:CompData_SL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O);
+            datfrom_in.dequeue(clockEdge());
+            trigger(Event:deallocTBE, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stalldatfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:M_evict) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_M_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocdatfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:M_SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:M_evict_x_I);
+            datfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:M_SnpSharedFwdL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_O_Fwded_SL1C1;
+              out_msg.Sender := in_msg.Sender;
+            }
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:CompData_SL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O_evict);
+            datfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:M_evict_SnpCleanInvalid);
+            datfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stalldatfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:M_evict_SnpCleanInvalid) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_IL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocdatfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stalldatfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:M_evict_SnpCleanInvalid_x_I) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_IL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocdatfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stalldatfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:M_evict_x_I) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_M_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocdatfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:M_evict_SnpCleanInvalid_x_I);
+            datfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stalldatfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:O) {      
+          if (in_msg.Type == CoherenceMessageType:O_SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := in_msg.Sender;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocdatfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:O_SnpSharedFwdL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_O_Fwded_SL1C1;
+              out_msg.Sender := machineID;
+            }
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:CompData_SL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O);
+            datfrom_in.dequeue(clockEdge());
+            trigger(Event:deallocTBE, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stalldatfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:O_evict) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_O_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocdatfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:O_SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := in_msg.Sender;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O_evict_x_I);
+            datfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:O_SnpSharedFwdL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_O_Fwded_SL1C1;
+              out_msg.Sender := machineID;
+            }
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:CompData_SL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O_evict);
+            datfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := in_msg.Sender;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O_evict_SnpCleanInvalid);
+            datfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stalldatfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:O_evict_SnpCleanInvalid) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_IL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocdatfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stalldatfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:O_evict_SnpCleanInvalid_x_I) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_IL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocdatfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stalldatfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:O_evict_x_I) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_O_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocdatfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := in_msg.Sender;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O_evict_SnpCleanInvalid_x_I);
+            datfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stalldatfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:O_store) {      
+          if (in_msg.Type == CoherenceMessageType:Comp_EL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CompAckL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:M);
+            trigger(Event:externalstoreMdatfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:O_SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := in_msg.Sender;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I_store);
+            datfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:O_SnpSharedFwdL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_O_Fwded_SL1C1;
+              out_msg.Sender := machineID;
+            }
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:CompData_SL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O_store);
+            datfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stalldatfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:S) {      
+          if (in_msg.Type == CoherenceMessageType:SnpCleanInvalidL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_IL1C1;
+              out_msg.Sender := in_msg.Sender;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocdatfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stalldatfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:S_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Comp_IL1C1) {
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocdatfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:SnpCleanInvalidL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_IL1C1;
+              out_msg.Sender := in_msg.Sender;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:S_evict_x_I);
+            datfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stalldatfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:S_evict_x_I) {      
+          if (in_msg.Type == CoherenceMessageType:Comp_IL1C1) {
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocdatfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stalldatfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:S_store) {      
+          if (in_msg.Type == CoherenceMessageType:Comp_EL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CompAckL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:M);
+            trigger(Event:externalstoreMdatfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:SnpCleanInvalidL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_IL1C1;
+              out_msg.Sender := in_msg.Sender;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I_store);
+            datfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stalldatfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else {
+          trigger(Event:Stalldatfrom_in, LineAddress, getEntry(LineAddress), tbe);
+        }
+      }
+    }
+  }
+  
+  in_port(snpfrom_in, CoherenceMessage, snpFrom) {
+    if (snpfrom_in.isReady(clockEdge())) {
+      peek (snpfrom_in, CoherenceMessage, block_on="LineAddress") {
+        Addr LineAddress := in_msg.LineAddress;
+        TBE tbe := TBEs[LineAddress];
+        State st := getState(tbe, getEntry(LineAddress), LineAddress);
+        if (st == State:E) {
+          if (in_msg.Type == CoherenceMessageType:M_SnpCleanInvalidL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_IL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:M_SnpSharedFwdL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_S_Fwded_SL1C1;
+              out_msg.Sender := machineID;
+            }
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:CompData_SL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:S);
+            snpfrom_in.dequeue(clockEdge());
+            trigger(Event:deallocTBE, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:E_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Comp_IL1C1) {
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:M_SnpCleanInvalidL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_IL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:E_evict_x_I);
+            snpfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:M_SnpSharedFwdL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_S_Fwded_SL1C1;
+              out_msg.Sender := machineID;
+            }
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:CompData_SL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:S_evict);
+            snpfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:E_evict_x_I) {      
+          if (in_msg.Type == CoherenceMessageType:Comp_IL1C1) {
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:I) {      
+          trigger(Event:Stallsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);
+        } else if (st == State:I_load) {      
+          if (in_msg.Type == CoherenceMessageType:CompData_EL1C1) {
+            getEntry(LineAddress).cl := in_msg.cl;
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CompAckL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:E);
+            trigger(Event:externalloadEsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:CompData_SL1C1) {
+            getEntry(LineAddress).cl := in_msg.cl;
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CompAckL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:S);
+            trigger(Event:externalloadSsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:I_store) {      
+          if (in_msg.Type == CoherenceMessageType:Comp_EL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CompAckL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:M);
+            trigger(Event:externalstoreMsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:M) {      
+          if (in_msg.Type == CoherenceMessageType:M_SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:M_SnpSharedFwdL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_O_Fwded_SL1C1;
+              out_msg.Sender := in_msg.Sender;
+            }
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:CompData_SL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O);
+            snpfrom_in.dequeue(clockEdge());
+            trigger(Event:deallocTBE, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:M_evict) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_M_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:M_SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:M_evict_x_I);
+            snpfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:M_SnpSharedFwdL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_O_Fwded_SL1C1;
+              out_msg.Sender := in_msg.Sender;
+            }
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:CompData_SL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O_evict);
+            snpfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:M_evict_SnpCleanInvalid);
+            snpfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:M_evict_SnpCleanInvalid) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_IL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:M_evict_SnpCleanInvalid_x_I) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_IL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:M_evict_x_I) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_M_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:M_evict_SnpCleanInvalid_x_I);
+            snpfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:O) {      
+          if (in_msg.Type == CoherenceMessageType:O_SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := in_msg.Sender;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:O_SnpSharedFwdL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_O_Fwded_SL1C1;
+              out_msg.Sender := machineID;
+            }
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:CompData_SL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O);
+            snpfrom_in.dequeue(clockEdge());
+            trigger(Event:deallocTBE, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:O_evict) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_O_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:O_SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := in_msg.Sender;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O_evict_x_I);
+            snpfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:O_SnpSharedFwdL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_O_Fwded_SL1C1;
+              out_msg.Sender := machineID;
+            }
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:CompData_SL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O_evict);
+            snpfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := in_msg.Sender;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O_evict_SnpCleanInvalid);
+            snpfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:O_evict_SnpCleanInvalid) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_IL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:O_evict_SnpCleanInvalid_x_I) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_IL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:O_evict_x_I) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_O_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := in_msg.Sender;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O_evict_SnpCleanInvalid_x_I);
+            snpfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:O_store) {      
+          if (in_msg.Type == CoherenceMessageType:Comp_EL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CompAckL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:M);
+            trigger(Event:externalstoreMsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:O_SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := in_msg.Sender;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I_store);
+            snpfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:O_SnpSharedFwdL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_O_Fwded_SL1C1;
+              out_msg.Sender := machineID;
+            }
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:CompData_SL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O_store);
+            snpfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:S) {      
+          if (in_msg.Type == CoherenceMessageType:SnpCleanInvalidL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_IL1C1;
+              out_msg.Sender := in_msg.Sender;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:S_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Comp_IL1C1) {
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:SnpCleanInvalidL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_IL1C1;
+              out_msg.Sender := in_msg.Sender;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:S_evict_x_I);
+            snpfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:S_evict_x_I) {      
+          if (in_msg.Type == CoherenceMessageType:Comp_IL1C1) {
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:S_store) {      
+          if (in_msg.Type == CoherenceMessageType:Comp_EL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CompAckL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:M);
+            trigger(Event:externalstoreMsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:SnpCleanInvalidL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_IL1C1;
+              out_msg.Sender := in_msg.Sender;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I_store);
+            snpfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else {
+          trigger(Event:Stallsnpfrom_in, LineAddress, getEntry(LineAddress), tbe);
+        }
+      }
+    }
+  }
+  
+  in_port(reqfrom_in, CoherenceMessage, reqFrom) {
+    if (reqfrom_in.isReady(clockEdge())) {
+      peek (reqfrom_in, CoherenceMessage, block_on="LineAddress") {
+        Addr LineAddress := in_msg.LineAddress;
+        TBE tbe := TBEs[LineAddress];
+        State st := getState(tbe, getEntry(LineAddress), LineAddress);
+        if (st == State:E) {
+          if (in_msg.Type == CoherenceMessageType:M_SnpCleanInvalidL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_IL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocreqfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:M_SnpSharedFwdL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_S_Fwded_SL1C1;
+              out_msg.Sender := machineID;
+            }
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:CompData_SL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:S);
+            reqfrom_in.dequeue(clockEdge());
+            trigger(Event:deallocTBE, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:E_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Comp_IL1C1) {
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocreqfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:M_SnpCleanInvalidL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_IL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:E_evict_x_I);
+            reqfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:M_SnpSharedFwdL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_S_Fwded_SL1C1;
+              out_msg.Sender := machineID;
+            }
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:CompData_SL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:S_evict);
+            reqfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:E_evict_x_I) {      
+          if (in_msg.Type == CoherenceMessageType:Comp_IL1C1) {
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocreqfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:I) {      
+          trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), tbe);
+        } else if (st == State:I_load) {      
+          if (in_msg.Type == CoherenceMessageType:CompData_EL1C1) {
+            getEntry(LineAddress).cl := in_msg.cl;
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CompAckL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:E);
+            trigger(Event:externalloadEreqfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:CompData_SL1C1) {
+            getEntry(LineAddress).cl := in_msg.cl;
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CompAckL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:S);
+            trigger(Event:externalloadSreqfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:I_store) {      
+          if (in_msg.Type == CoherenceMessageType:Comp_EL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CompAckL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:M);
+            trigger(Event:externalstoreMreqfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:M) {      
+          if (in_msg.Type == CoherenceMessageType:M_SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocreqfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:M_SnpSharedFwdL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_O_Fwded_SL1C1;
+              out_msg.Sender := in_msg.Sender;
+            }
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:CompData_SL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O);
+            reqfrom_in.dequeue(clockEdge());
+            trigger(Event:deallocTBE, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:M_evict) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_M_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocreqfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:M_SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:M_evict_x_I);
+            reqfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:M_SnpSharedFwdL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_O_Fwded_SL1C1;
+              out_msg.Sender := in_msg.Sender;
+            }
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:CompData_SL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O_evict);
+            reqfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:M_evict_SnpCleanInvalid);
+            reqfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:M_evict_SnpCleanInvalid) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_IL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocreqfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:M_evict_SnpCleanInvalid_x_I) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_IL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocreqfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:M_evict_x_I) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_M_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocreqfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:M_evict_SnpCleanInvalid_x_I);
+            reqfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:O) {      
+          if (in_msg.Type == CoherenceMessageType:O_SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := in_msg.Sender;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocreqfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:O_SnpSharedFwdL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_O_Fwded_SL1C1;
+              out_msg.Sender := machineID;
+            }
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:CompData_SL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O);
+            reqfrom_in.dequeue(clockEdge());
+            trigger(Event:deallocTBE, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:O_evict) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_O_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocreqfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:O_SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := in_msg.Sender;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O_evict_x_I);
+            reqfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:O_SnpSharedFwdL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_O_Fwded_SL1C1;
+              out_msg.Sender := machineID;
+            }
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:CompData_SL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O_evict);
+            reqfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := in_msg.Sender;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O_evict_SnpCleanInvalid);
+            reqfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:O_evict_SnpCleanInvalid) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_IL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocreqfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:O_evict_SnpCleanInvalid_x_I) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_IL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocreqfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:O_evict_x_I) {      
+          if (in_msg.Type == CoherenceMessageType:CompDBIDRespL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CBWR_Data_O_PDL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocreqfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := in_msg.Sender;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O_evict_SnpCleanInvalid_x_I);
+            reqfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:O_store) {      
+          if (in_msg.Type == CoherenceMessageType:Comp_EL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CompAckL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:M);
+            trigger(Event:externalstoreMreqfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:O_SnpCleanInvalidL1C1) {
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpRespData_I_PDL1C1;
+              out_msg.Sender := in_msg.Sender;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I_store);
+            reqfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:O_SnpSharedFwdL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_O_Fwded_SL1C1;
+              out_msg.Sender := machineID;
+            }
+            enqueue(datto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:CompData_SL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O_store);
+            reqfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:S) {      
+          if (in_msg.Type == CoherenceMessageType:SnpCleanInvalidL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_IL1C1;
+              out_msg.Sender := in_msg.Sender;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocreqfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:S_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Comp_IL1C1) {
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocreqfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:SnpCleanInvalidL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_IL1C1;
+              out_msg.Sender := in_msg.Sender;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:S_evict_x_I);
+            reqfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:S_evict_x_I) {      
+          if (in_msg.Type == CoherenceMessageType:Comp_IL1C1) {
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocreqfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else if (st == State:S_store) {      
+          if (in_msg.Type == CoherenceMessageType:Comp_EL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:CompAckL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:M);
+            trigger(Event:externalstoreMreqfrom_in, LineAddress, getEntry(LineAddress), tbe);  
+          } else if (in_msg.Type == CoherenceMessageType:SnpCleanInvalidL1C1) {
+            enqueue(rspto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:SnpResp_IL1C1;
+              out_msg.Sender := in_msg.Sender;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:I_store);
+            reqfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), tbe);
+          } else {
+            trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else {
+          trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), tbe);
+        }
+      }
+    }
+  }
+  
+  in_port(mandatory_in, SequencerMsg, mandatoryQueue) {
+    if (mandatory_in.isReady(clockEdge())) {
+      peek(mandatory_in, SequencerMsg, block_on="LineAddress") {
+        Addr LineAddress := in_msg.LineAddress;
+        Entry entry := getEntry(LineAddress);
+        if (is_invalid(entry) &&
+            cache.cacheAvail(LineAddress) == false ) {
+          Addr LineAddress := cache.cacheProbe(in_msg.LineAddress);
+          TBE tbe := TBEs[LineAddress];
+          Entry entry := getEntry(LineAddress);
+          State st := getState(tbe, entry, LineAddress);
+          if (st == State:S) {
+            if (is_invalid(tbe)) {
+              if (TBEs.areNSlotsAvailable(1, clockEdge())) {
+                trigger(Event:allocTBE, LineAddress, getEntry(LineAddress), tbe);
+              } else {
+                trigger(Event:Stallmandatory_in, LineAddress, getEntry(LineAddress), tbe);
+              }
+            }
+            enqueue(reqto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:EvictL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:S_evict);
+          } else if (st == State:E) {
+            if (is_invalid(tbe)) {
+              if (TBEs.areNSlotsAvailable(1, clockEdge())) {
+                trigger(Event:allocTBE, LineAddress, getEntry(LineAddress), tbe);
+              } else {
+                trigger(Event:Stallmandatory_in, LineAddress, getEntry(LineAddress), tbe);
+              }
+            }
+            enqueue(reqto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:EvictL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:E_evict);
+          } else if (st == State:O) {
+            if (is_invalid(tbe)) {
+              if (TBEs.areNSlotsAvailable(1, clockEdge())) {
+                trigger(Event:allocTBE, LineAddress, getEntry(LineAddress), tbe);
+              } else {
+                trigger(Event:Stallmandatory_in, LineAddress, getEntry(LineAddress), tbe);
+              }
+            }
+            enqueue(reqto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:WriteBackFullL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:O_evict);
+          } else if (st == State:M) {
+            if (is_invalid(tbe)) {
+              if (TBEs.areNSlotsAvailable(1, clockEdge())) {
+                trigger(Event:allocTBE, LineAddress, getEntry(LineAddress), tbe);
+              } else {
+                trigger(Event:Stallmandatory_in, LineAddress, getEntry(LineAddress), tbe);
+              }
+            }
+            enqueue(reqto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:WriteBackFullL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, getEntry(LineAddress), LineAddress, State:M_evict);
+          } else {
+            trigger(Event:Stallmandatory_in, LineAddress, getEntry(LineAddress), tbe);
+          }
+        } else {
+          TBE tbe := TBEs[LineAddress];
+          Entry entry := getEntry(LineAddress);
+          State st := getState(tbe, entry, LineAddress);
+          if (in_msg.Type == SequencerRequestType:LD) {
+            if (st == State:S) {
+              setState(tbe, getEntry(LineAddress), LineAddress, State:S);
+              trigger(Event:SloadSEvent, LineAddress, getEntry(LineAddress), tbe);
+            } else if (st == State:E) {
+              setState(tbe, getEntry(LineAddress), LineAddress, State:E);
+              trigger(Event:EloadEEvent, LineAddress, getEntry(LineAddress), tbe);
+            } else if (st == State:O) {
+              setState(tbe, getEntry(LineAddress), LineAddress, State:O);
+              trigger(Event:OloadOEvent, LineAddress, getEntry(LineAddress), tbe);
+            } else if (st == State:M) {
+              setState(tbe, getEntry(LineAddress), LineAddress, State:M);
+              trigger(Event:MloadMEvent, LineAddress, getEntry(LineAddress), tbe);
+            } else if (st == State:I) {
+              trigger(Event:allocI_load, LineAddress, getEntry(LineAddress), tbe);
+            } else {
+              trigger(Event:Stallmandatory_in, LineAddress, getEntry(LineAddress), tbe);
+            }
+          } else if (in_msg.Type == SequencerRequestType:ST) {
+            if (st == State:S) {
+              if (is_invalid(tbe)) {
+                if (TBEs.areNSlotsAvailable(1, clockEdge())) {
+                  trigger(Event:allocTBE, LineAddress, getEntry(LineAddress), tbe);
+                } else {
+                  trigger(Event:Stallmandatory_in, LineAddress, getEntry(LineAddress), tbe);
+                }
+              }
+              enqueue(reqto_out, CoherenceMessage, responseLatency) {
+                out_msg.LineAddress := LineAddress;
+                out_msg.MessageSize := MessageSizeType:Control;
+                out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+                out_msg.Type := CoherenceMessageType:CleanUniqueL1C1;
+                out_msg.Sender := machineID;
+              }
+              setState(tbe, getEntry(LineAddress), LineAddress, State:S_store);
+              trigger(Event:tbePopulate, LineAddress, getEntry(LineAddress), tbe);
+            } else if (st == State:E) {
+              setState(tbe, getEntry(LineAddress), LineAddress, State:M);
+              trigger(Event:EstoreMEvent, LineAddress, getEntry(LineAddress), tbe);
+            } else if (st == State:O) {
+              if (is_invalid(tbe)) {
+                if (TBEs.areNSlotsAvailable(1, clockEdge())) {
+                  trigger(Event:allocTBE, LineAddress, getEntry(LineAddress), tbe);
+                } else {
+                  trigger(Event:Stallmandatory_in, LineAddress, getEntry(LineAddress), tbe);
+                }
+              }
+              enqueue(reqto_out, CoherenceMessage, responseLatency) {
+                out_msg.LineAddress := LineAddress;
+                out_msg.MessageSize := MessageSizeType:Control;
+                out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+                out_msg.Type := CoherenceMessageType:CleanUniqueL1C1;
+                out_msg.Sender := machineID;
+              }
+              setState(tbe, getEntry(LineAddress), LineAddress, State:O_store);
+              trigger(Event:tbePopulate, LineAddress, getEntry(LineAddress), tbe);
+            } else if (st == State:M) {
+              setState(tbe, getEntry(LineAddress), LineAddress, State:M);
+              trigger(Event:MstoreMEvent, LineAddress, getEntry(LineAddress), tbe);
+            } else if (st == State:I) {
+              trigger(Event:allocI_store, LineAddress, getEntry(LineAddress), tbe);
+            } else {
+              trigger(Event:Stallmandatory_in, LineAddress, getEntry(LineAddress), tbe);
+            }
+          } else {
+            error("Unexpected message type from DMA");
+          }
+        }
+      }
+    }
+  }
+  
+  //SLICC.ModularSLICC.dma.GenDMAActions
+  action(allocEntry, "a", desc="Allocate an entry") {
+     assert(is_invalid(cache_entry));
+     assert(cache.cacheAvail(address));
+     set_cache_entry(cache.allocate(address, new Entry));
+  }
+  action(deallocEntry, "d", desc="Deallocate an entry") {
+      assert(is_valid(cache_entry));
+      cache.deallocate(address);
+      unset_cache_entry();
+  }
+  action(a_allocTBE, "aTBE", desc="Allocate TBE entry.") {
+    TBEs.allocate(address);
+    set_tbe(TBEs[address]);
+  }
+  action(a_deallocTBE, "dTBE", desc="Deallocate TBE entry.") {
+    if (is_valid(tbe)) {
+      TBEs.deallocate(address);
+      unset_tbe();
+    }
+  }
+  action(loadHit, "Lh", desc="Callback local or remote load hit.") {
+    // Signal to gem5 that this DMA load/read has hit/finished
+    assert(is_valid(cache_entry));
+    cache.setMRU(cache_entry);
+    dma_sequencer.dataCallback(cache_entry.cl, address);
+  }
+  action(storeHit, "Sh", desc="Callback local or remote store hit.") {
+    // Signal to gem5 that this DMA load/read has hit/finished
+    assert(is_valid(cache_entry));
+    cache.setMRU(cache_entry);
+    dma_sequencer.ackCallback(address);
+  }
+  action(populateTBE, "pTBE", desc="Populate TBE entry for DMA.") {
+    assert(is_valid(tbe));
+    peek(mandatory_in, SequencerMsg) {
+       tbe.DataBlk := in_msg.DataBlk;
+       tbe.Len := in_msg.Len;
+       tbe.PhysicalAddress := in_msg.PhysicalAddress;
+    }
+  }
+  action(writePartial, "wP", desc="Perform a partial (DMA) write to a cache line from the TBE.") {
+      cache_entry.cl.copyPartial(tbe.DataBlk,
+                                  getOffset(tbe.PhysicalAddress),
+                                  tbe.Len);
+  }
+  action(writePartialLocal, "wPL", desc="Perform a partial (DMA) write to a cache line from the Sequencer queue.") {
+    peek(mandatory_in, SequencerMsg) {
+      cache_entry.cl.copyPartial(in_msg.DataBlk,
+                                  getOffset(in_msg.PhysicalAddress),
+                                  in_msg.Len);
+    }
+  }
+  action(popmandatory_in, "pmandatory_in0", desc="Pop the mandatory_in queue.") {
+      // Sometimes we need to be able to pop a queue/in_port from within a transition
+      // rather than from within the in_port itself. Thus, we need an action for this,
+      // since transitions cannot execute non-action functions.
+      mandatory_in.dequeue(clockEdge());
+  }
+  
+  action(recyclemandatory_in, "rmandatory_in0", desc="Recycle the mandatory_in port") {
+    mandatory_in.recycle(clockEdge(), cyclesToTicks(recycleLatency));
+  }
+  
+  action(popdatfrom_in, "pdatfrom_in0", desc="Pop the datfrom_in queue.") {
+      // Sometimes we need to be able to pop a queue/in_port from within a transition
+      // rather than from within the in_port itself. Thus, we need an action for this,
+      // since transitions cannot execute non-action functions.
+      datfrom_in.dequeue(clockEdge());
+  }
+  
+  action(recycledatfrom_in, "rdatfrom_in0", desc="Recycle the datfrom_in port") {
+    datfrom_in.recycle(clockEdge(), cyclesToTicks(recycleLatency));
+  }
+  
+  action(popreqfrom_in, "preqfrom_in0", desc="Pop the reqfrom_in queue.") {
+      // Sometimes we need to be able to pop a queue/in_port from within a transition
+      // rather than from within the in_port itself. Thus, we need an action for this,
+      // since transitions cannot execute non-action functions.
+      reqfrom_in.dequeue(clockEdge());
+  }
+  
+  action(recyclereqfrom_in, "rreqfrom_in0", desc="Recycle the reqfrom_in port") {
+    reqfrom_in.recycle(clockEdge(), cyclesToTicks(recycleLatency));
+  }
+  
+  action(poprspfrom_in, "prspfrom_in0", desc="Pop the rspfrom_in queue.") {
+      // Sometimes we need to be able to pop a queue/in_port from within a transition
+      // rather than from within the in_port itself. Thus, we need an action for this,
+      // since transitions cannot execute non-action functions.
+      rspfrom_in.dequeue(clockEdge());
+  }
+  
+  action(recyclerspfrom_in, "rrspfrom_in0", desc="Recycle the rspfrom_in port") {
+    rspfrom_in.recycle(clockEdge(), cyclesToTicks(recycleLatency));
+  }
+  
+  action(popsnpfrom_in, "psnpfrom_in0", desc="Pop the snpfrom_in queue.") {
+      // Sometimes we need to be able to pop a queue/in_port from within a transition
+      // rather than from within the in_port itself. Thus, we need an action for this,
+      // since transitions cannot execute non-action functions.
+      snpfrom_in.dequeue(clockEdge());
+  }
+  
+  action(recyclesnpfrom_in, "rsnpfrom_in0", desc="Recycle the snpfrom_in port") {
+    snpfrom_in.recycle(clockEdge(), cyclesToTicks(recycleLatency));
+  }
+  
+  action(actionI_I_load, "II0", desc="TODO") {
+    peek(mandatory_in, SequencerMsg) {
+      Addr LineAddress := in_msg.LineAddress;
+      enqueue(reqto_out, CoherenceMessage, responseLatency) {
+        out_msg.LineAddress := LineAddress;
+        out_msg.MessageSize := MessageSizeType:Control;
+        out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+        out_msg.Type := CoherenceMessageType:ReadSharedL1C1;
+        out_msg.Sender := machineID;
+      }
+    }
+  }
+  
+  action(actionI_I_store, "II1", desc="TODO") {
+    peek(mandatory_in, SequencerMsg) {
+      Addr LineAddress := in_msg.LineAddress;
+      enqueue(reqto_out, CoherenceMessage, responseLatency) {
+        out_msg.LineAddress := LineAddress;
+        out_msg.MessageSize := MessageSizeType:Control;
+        out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+        out_msg.Type := CoherenceMessageType:CleanUniqueL1C1;
+        out_msg.Sender := machineID;
+      }
+    }
+  }
+  
+  action(empty, "e", desc="Empty action") {
+      // empty action; useful as SLICC requires valid transitions
+      // to be non-empty, but the actions being invoked can still be empty
+      // e.g. to simulate a z-stall
+  }
+  //SLICC.ModularSLICC.dma.GenDMATransitions
+  transition({I}, deallocdatfrom_in) {
+      deallocEntry;
+      a_deallocTBE;
+      popdatfrom_in;
+  }
+  
+  transition({I}, deallocreqfrom_in) {
+      deallocEntry;
+      a_deallocTBE;
+      popreqfrom_in;
+  }
+  
+  transition({I}, deallocrspfrom_in) {
+      deallocEntry;
+      a_deallocTBE;
+      poprspfrom_in;
+  }
+  
+  transition({I}, deallocsnpfrom_in) {
+      deallocEntry;
+      a_deallocTBE;
+      popsnpfrom_in;
+  }
+  
+  transition(I, allocI_store, I_store) {
+    allocEntry;
+    a_allocTBE;
+    populateTBE;
+  actionI_I_store;
+    popmandatory_in;
+  }
+  
+  transition(I, allocI_load, I_load) {
+    allocEntry;
+    a_allocTBE;
+    actionI_I_load;
+    popmandatory_in;
+  }
+  
+  transition({E, E_evict, E_evict_x_I, I, I_load, I_store, M, M_evict, M_evict_SnpCleanInvalid, M_evict_SnpCleanInvalid_x_I, M_evict_x_I, O, O_evict, O_evict_SnpCleanInvalid, O_evict_SnpCleanInvalid_x_I, O_evict_x_I, O_store, S, S_evict, S_evict_x_I, S_store}, tbePopulate) {
+    populateTBE;
+    popmandatory_in;
+  }
+  
+  transition(E, EloadEEvent, E) {
+    loadHit;  // In DMA, no difference in callback for local/remote hits
+    popmandatory_in;
+  }
+  
+  transition(M, MloadMEvent, M) {
+    loadHit;  // In DMA, no difference in callback for local/remote hits
+    popmandatory_in;
+  }
+  
+  transition(O, OloadOEvent, O) {
+    loadHit;  // In DMA, no difference in callback for local/remote hits
+    popmandatory_in;
+  }
+  
+  transition(S, SloadSEvent, S) {
+    loadHit;  // In DMA, no difference in callback for local/remote hits
+    popmandatory_in;
+  }
+  
+  transition(E, EstoreMEvent, M) {
+    writePartialLocal; // Unlike in an L1Cache, the controller must handle actually writing the value
+    storeHit;  // In DMA, no difference in callback for local/remote hits
+    popmandatory_in;
+  }
+  
+  transition(M, MstoreMEvent, M) {
+    writePartialLocal; // Unlike in an L1Cache, the controller must handle actually writing the value
+    storeHit;  // In DMA, no difference in callback for local/remote hits
+    popmandatory_in;
+  }
+  
+  transition(E, externalloadEdatfrom_in, E) {
+    loadHit;  // In DMA, no difference in callback for local/remote hits
+    a_deallocTBE;
+    popdatfrom_in;
+  }
+  
+  transition(M, externalloadMdatfrom_in, M) {
+    loadHit;  // In DMA, no difference in callback for local/remote hits
+    a_deallocTBE;
+    popdatfrom_in;
+  }
+  
+  transition(O, externalloadOdatfrom_in, O) {
+    loadHit;  // In DMA, no difference in callback for local/remote hits
+    a_deallocTBE;
+    popdatfrom_in;
+  }
+  
+  transition(S, externalloadSdatfrom_in, S) {
+    loadHit;  // In DMA, no difference in callback for local/remote hits
+    a_deallocTBE;
+    popdatfrom_in;
+  }
+  
+  transition(M, externalstoreMdatfrom_in, M) {
+    writePartial; // Unlike in an L1Cache, the controller must handle actually writing the value
+    storeHit;  // In DMA, no difference in callback for local/remote hits
+    a_deallocTBE;
+    popdatfrom_in;
+  }
+  
+  transition(E, externalloadEreqfrom_in, E) {
+    loadHit;  // In DMA, no difference in callback for local/remote hits
+    a_deallocTBE;
+    popreqfrom_in;
+  }
+  
+  transition(M, externalloadMreqfrom_in, M) {
+    loadHit;  // In DMA, no difference in callback for local/remote hits
+    a_deallocTBE;
+    popreqfrom_in;
+  }
+  
+  transition(O, externalloadOreqfrom_in, O) {
+    loadHit;  // In DMA, no difference in callback for local/remote hits
+    a_deallocTBE;
+    popreqfrom_in;
+  }
+  
+  transition(S, externalloadSreqfrom_in, S) {
+    loadHit;  // In DMA, no difference in callback for local/remote hits
+    a_deallocTBE;
+    popreqfrom_in;
+  }
+  
+  transition(M, externalstoreMreqfrom_in, M) {
+    writePartial; // Unlike in an L1Cache, the controller must handle actually writing the value
+    storeHit;  // In DMA, no difference in callback for local/remote hits
+    a_deallocTBE;
+    popreqfrom_in;
+  }
+  
+  transition(E, externalloadErspfrom_in, E) {
+    loadHit;  // In DMA, no difference in callback for local/remote hits
+    a_deallocTBE;
+    poprspfrom_in;
+  }
+  
+  transition(M, externalloadMrspfrom_in, M) {
+    loadHit;  // In DMA, no difference in callback for local/remote hits
+    a_deallocTBE;
+    poprspfrom_in;
+  }
+  
+  transition(O, externalloadOrspfrom_in, O) {
+    loadHit;  // In DMA, no difference in callback for local/remote hits
+    a_deallocTBE;
+    poprspfrom_in;
+  }
+  
+  transition(S, externalloadSrspfrom_in, S) {
+    loadHit;  // In DMA, no difference in callback for local/remote hits
+    a_deallocTBE;
+    poprspfrom_in;
+  }
+  
+  transition(M, externalstoreMrspfrom_in, M) {
+    writePartial; // Unlike in an L1Cache, the controller must handle actually writing the value
+    storeHit;  // In DMA, no difference in callback for local/remote hits
+    a_deallocTBE;
+    poprspfrom_in;
+  }
+  
+  transition(E, externalloadEsnpfrom_in, E) {
+    loadHit;  // In DMA, no difference in callback for local/remote hits
+    a_deallocTBE;
+    popsnpfrom_in;
+  }
+  
+  transition(M, externalloadMsnpfrom_in, M) {
+    loadHit;  // In DMA, no difference in callback for local/remote hits
+    a_deallocTBE;
+    popsnpfrom_in;
+  }
+  
+  transition(O, externalloadOsnpfrom_in, O) {
+    loadHit;  // In DMA, no difference in callback for local/remote hits
+    a_deallocTBE;
+    popsnpfrom_in;
+  }
+  
+  transition(S, externalloadSsnpfrom_in, S) {
+    loadHit;  // In DMA, no difference in callback for local/remote hits
+    a_deallocTBE;
+    popsnpfrom_in;
+  }
+  
+  transition(M, externalstoreMsnpfrom_in, M) {
+    writePartial; // Unlike in an L1Cache, the controller must handle actually writing the value
+    storeHit;  // In DMA, no difference in callback for local/remote hits
+    a_deallocTBE;
+    popsnpfrom_in;
+  }
+  
+  transition({E, E_evict, E_evict_x_I, I, I_load, I_store, M, M_evict, M_evict_SnpCleanInvalid, M_evict_SnpCleanInvalid_x_I, M_evict_x_I, O, O_evict, O_evict_SnpCleanInvalid, O_evict_SnpCleanInvalid_x_I, O_evict_x_I, O_store, S, S_evict, S_evict_x_I, S_store}, Stallmandatory_in) {
+      recyclemandatory_in;
+  }
+  
+  transition({E, E_evict, E_evict_x_I, I, I_load, I_store, M, M_evict, M_evict_SnpCleanInvalid, M_evict_SnpCleanInvalid_x_I, M_evict_x_I, O, O_evict, O_evict_SnpCleanInvalid, O_evict_SnpCleanInvalid_x_I, O_evict_x_I, O_store, S, S_evict, S_evict_x_I, S_store}, Stalldatfrom_in) {
+      recycledatfrom_in;
+  }
+  
+  transition({E, E_evict, E_evict_x_I, I, I_load, I_store, M, M_evict, M_evict_SnpCleanInvalid, M_evict_SnpCleanInvalid_x_I, M_evict_x_I, O, O_evict, O_evict_SnpCleanInvalid, O_evict_SnpCleanInvalid_x_I, O_evict_x_I, O_store, S, S_evict, S_evict_x_I, S_store}, Stallreqfrom_in) {
+      recyclereqfrom_in;
+  }
+  
+  transition({E, E_evict, E_evict_x_I, I, I_load, I_store, M, M_evict, M_evict_SnpCleanInvalid, M_evict_SnpCleanInvalid_x_I, M_evict_x_I, O, O_evict, O_evict_SnpCleanInvalid, O_evict_SnpCleanInvalid_x_I, O_evict_x_I, O_store, S, S_evict, S_evict_x_I, S_store}, Stallrspfrom_in) {
+      recyclerspfrom_in;
+  }
+  
+  transition({E, E_evict, E_evict_x_I, I, I_load, I_store, M, M_evict, M_evict_SnpCleanInvalid, M_evict_SnpCleanInvalid_x_I, M_evict_x_I, O, O_evict, O_evict_SnpCleanInvalid, O_evict_SnpCleanInvalid_x_I, O_evict_x_I, O_store, S, S_evict, S_evict_x_I, S_store}, Stallsnpfrom_in) {
+      recyclesnpfrom_in;
+  }
+  
+  transition({M_evict_SnpCleanInvalid_x_I, M, I_store, M_evict_SnpCleanInvalid, O_evict_SnpCleanInvalid_x_I, O_evict_x_I, O_evict_SnpCleanInvalid, E_evict, M_evict_x_I, S_store, S_evict, E_evict_x_I, O, O_evict, I, E, M_evict, S_evict_x_I, S, O_store, I_load}, allocTBE) {
+    a_allocTBE;
+  }
+  
+  transition({M_evict_SnpCleanInvalid_x_I, M, I_store, M_evict_SnpCleanInvalid, O_evict_SnpCleanInvalid_x_I, O_evict_x_I, O_evict_SnpCleanInvalid, E_evict, M_evict_x_I, S_store, S_evict, E_evict_x_I, O, O_evict, I, E, M_evict, S_evict_x_I, S, O_store, I_load}, deallocTBE) {
+    a_deallocTBE;
+  }
+  
+  transition({E, E_evict, E_evict_x_I, I, I_load, I_store, M, M_evict, M_evict_SnpCleanInvalid, M_evict_SnpCleanInvalid_x_I, M_evict_x_I, O, O_evict, O_evict_SnpCleanInvalid, O_evict_SnpCleanInvalid_x_I, O_evict_x_I, O_store, S, S_evict, S_evict_x_I, S_store}, Progress) {
+      empty;
+  }
+}
+// EOF<DMA>

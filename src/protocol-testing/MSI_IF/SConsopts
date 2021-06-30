@@ -1,0 +1,7 @@
+Import('*')
+
+all_protocols.extend([
+'MSI_IF',
+])
+
+protocol_dirs.append(str(Dir('.').abspath))

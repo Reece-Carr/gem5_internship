@@ -1,0 +1,343 @@
+//SLICC.ModularSLICC.cache.GenCacheHeader
+machine(MachineType:DMA, "DMA Cache controller")
+: DMASequencer *dma_sequencer;
+
+  // The following latencies should be exposed as command-line parameters in a future update
+  Cycles responseLatency := 1;
+
+  // Required networks
+  MessageBuffer *mandatoryQueue;
+  MessageBuffer *conditionQueue;
+
+  // Dynamic networks
+  MessageBuffer *respTo, network="To", virtual_network="0", vnet_type="resp";
+  MessageBuffer *respFrom, network="From", virtual_network="0", vnet_type="resp";
+  MessageBuffer *fwdFrom, network="From", virtual_network="1", vnet_type="fwd";
+  MessageBuffer *reqTo, network="To", virtual_network="2", vnet_type="req";
+
+{
+  //SLICC.ModularSLICC.cache.GenDMAStateDecl
+  state_declaration(State, desc="DMA states", default="DMA_State_READY") {
+    READY, AccessPermission:Invalid, desc="Ready to accept a new request";
+    BUSY_RD, AccessPermission:Busy, desc="Busy: currently processing a request";
+    BUSY_WR, AccessPermission:Busy, desc="Busy: currently processing a request";
+    BUSY_WR_DATA_ACK, AccessPermission:Busy, desc="Busy: currently processing a request";
+    BUSY_WR_DIR, AccessPermission:Busy, desc="Busy: currently processing a request";
+  }
+  //SLICC.ModularSLICC.cache.GenCacheEvents
+  enumeration(Event, desc="Cache events") {
+    ReadRequest, desc="...";
+    WriteRequest, desc="...";
+    DMA_ACK, desc="...";
+    GetM_Ack_AD_respfrom, desc="...";
+    GetM_Ack_D_respfrom, desc="...";
+    GetS_Ack_respfrom, desc="...";
+    Inv_Ack, desc="...";
+    Inv_Ack_Last, desc="...";
+    GetM_Ack_AD_fwdfrom, desc="...";
+    GetM_Ack_D_fwdfrom, desc="...";
+    GetS_Ack_fwdfrom, desc="...";
+  }
+  //SLICC.ModularSLICC.cache.GenCacheTBE
+  structure(TBE, desc="TBE entries for DMA machine") {
+    State TBEState, desc="Cache state";
+    DataBlock DataBlk,    desc="Data to be written";
+    int acksReceived, default=0, desc="...TODO...";
+    int acksExpected, default=0, desc="...TODO...";
+  }
+  
+  structure(TBETable, external="yes"){
+    TBE lookup(Addr);
+    void allocate(Addr);
+    void deallocate(Addr);
+    bool isPresent(Addr);
+  }
+  
+  TBETable TBEs, template="<DMA_TBE>", constructor="m_number_of_TBEs";
+  
+  void set_tbe(TBE b);
+  void unset_tbe();
+  Tick clockEdge();
+  MachineID mapAddressToMachine(Addr addr, MachineType mtype);
+  
+  State getState(TBE tbe, Addr LineAddress) {
+    if (is_valid(tbe)) {
+      ////DPRINTF(RubySlicc, "getState = %d at 0x%x\n", tbe.TBEState, LineAddress);
+      return tbe.TBEState;
+    } else {
+      ////DPRINTF(RubySlicc, "getState = %d at 0x%x\n", State:I, LineAddress);
+      return State:READY;
+    }
+  }
+  
+  void setState(TBE tbe, Addr LineAddress, State state) {
+    if (is_valid(tbe)) {
+      tbe.TBEState := state;
+    }
+    ////DPRINTF(RubySlicc, "setState = %d at 0x%x\n", state, LineAddress);
+  }
+  
+  AccessPermission getAccessPermission(Addr addr) {
+    return AccessPermission:NotPresent;
+  }
+
+  void setAccessPermission(Addr addr, State state) {
+  }
+  
+  void functionalRead(Addr addr, Packet *pkt) {
+    error("DMA does not support functional read.");
+  }
+
+  int functionalWrite(Addr addr, Packet *pkt) {
+    error("DMA does not support functional write.");
+  }
+  
+  //SLICC.ModularSLICC.cache.GenCacheOutPorts
+  out_port(reqto_out, CoherenceMessage, reqTo);
+  out_port(respto_out, CoherenceMessage, respTo);
+  
+  //SLICC.ModularSLICC.cache.GenCacheInPorts
+  in_port(fwdfrom_in, CoherenceMessage, fwdFrom) {
+    if (fwdfrom_in.isReady(clockEdge())) {
+      peek (fwdfrom_in, CoherenceMessage) {
+        TBE tbe := TBEs[in_msg.LineAddress];
+        Addr LineAddress := in_msg.LineAddress;
+        if (in_msg.Type == CoherenceMessageType:GetS_Ack) {
+            trigger(Event:GetS_Ack_fwdfrom, LineAddress, tbe);
+        } else if (in_msg.Type == CoherenceMessageType:GetM_Ack_D) {
+            trigger(Event:GetM_Ack_D_fwdfrom, LineAddress, tbe);
+        } else {
+          DPRINTF(RubySlicc, "DMA got bad msg %d\n", in_msg.Type);
+          error("Dma got bad msg on fwdfrom_in");
+        }
+      }
+    }
+  }
+
+  in_port(respfrom_in, CoherenceMessage, respFrom) {
+    if (respfrom_in.isReady(clockEdge())) {
+      peek (respfrom_in, CoherenceMessage) {
+        TBE tbe := TBEs[in_msg.LineAddress];
+        Addr LineAddress := in_msg.LineAddress;
+        if (in_msg.Type == CoherenceMessageType:GetS_Ack) {
+            trigger(Event:GetS_Ack_respfrom, LineAddress, tbe);
+        } else if (in_msg.Type == CoherenceMessageType:GetM_Ack_AD) {
+            if (in_msg.acksExpected > 0) {
+              trigger(Event:GetM_Ack_AD_respfrom, LineAddress, tbe);
+            } else {
+              trigger(Event:GetM_Ack_D_respfrom, LineAddress, tbe);
+            }
+        } else if (in_msg.Type == CoherenceMessageType:GetM_Ack_D) {
+            trigger(Event:GetM_Ack_D_respfrom, LineAddress, tbe);
+        } else if (in_msg.Type == CoherenceMessageType:DMA_ACK) {
+            trigger(Event:DMA_ACK, LineAddress, tbe);
+        } else if (in_msg.Type == CoherenceMessageType:Inv_Ack) {
+            if (tbe.acksReceived + 1 == tbe.acksExpected) {
+              trigger(Event:Inv_Ack_Last, LineAddress, tbe);
+            } else {
+              trigger(Event:Inv_Ack, LineAddress, tbe);
+            }
+        } else {
+          DPRINTF(RubySlicc, "DMA got bad msg %d\n", in_msg.Type);
+          error("Dma got bad msg on respfrom_in");
+        }
+      }
+    }
+  }
+  
+  in_port(dmaRequestQueue_in, SequencerMsg, mandatoryQueue, desc="...") {
+    if (dmaRequestQueue_in.isReady(clockEdge())) {
+      peek(dmaRequestQueue_in, SequencerMsg) {
+        if (in_msg.Type == SequencerRequestType:LD ) {
+          trigger(Event:ReadRequest, in_msg.LineAddress, TBEs[in_msg.LineAddress]);
+        } else if (in_msg.Type == SequencerRequestType:ST) {
+          trigger(Event:WriteRequest, in_msg.LineAddress, TBEs[in_msg.LineAddress]);
+        } else {
+          error("Invalid request type");
+        }
+      }
+    }
+  }
+
+  //SLICC.ModularSLICC.cache.GenCacheActions
+  action(s_sendReadRequest, "s", desc="Send a DMA read request to memory") {
+    peek(dmaRequestQueue_in, SequencerMsg) {
+      enqueue(reqto_out, CoherenceMessage, responseLatency) {
+        out_msg.LineAddress := in_msg.LineAddress;
+        out_msg.PhysicalAddress := in_msg.PhysicalAddress;
+        out_msg.Type := CoherenceMessageType:DMA_READ;
+        out_msg.Sender := machineID;
+        out_msg.cl := in_msg.DataBlk;
+        out_msg.Len := in_msg.Len;
+        out_msg.Destination.add(mapAddressToMachine(address, MachineType:Directory));
+        out_msg.MessageSize := MessageSizeType:Writeback_Control;
+      }
+    }
+  }
+
+  action(s_sendWriteRequest, "\s", desc="Send a DMA write request to memory") {
+    peek(dmaRequestQueue_in, SequencerMsg) {
+      enqueue(reqto_out, CoherenceMessage, responseLatency) {
+        out_msg.LineAddress := in_msg.LineAddress;
+        out_msg.PhysicalAddress := in_msg.PhysicalAddress;
+        out_msg.Type := CoherenceMessageType:DMA_WRITE;
+        out_msg.Sender := machineID;
+        out_msg.cl := in_msg.DataBlk;
+        out_msg.Len := in_msg.Len;
+        out_msg.Destination.add(mapAddressToMachine(address, MachineType:Directory));
+        out_msg.MessageSize := MessageSizeType:Writeback_Control;
+      }
+    }
+  }
+
+  action(a_ackCallback, "a", desc="Notify dma controller that write request completed") {
+    dma_sequencer.ackCallback(address);
+  }
+
+  action(d_dataCallback, "d", desc="Write data to dma sequencer") {
+    dma_sequencer.dataCallback(tbe.DataBlk, address);
+  }
+
+  action(t_updateTBEData_respfrom, "trf", desc="Update TBE Data") {
+    assert(is_valid(tbe));
+    peek(respfrom_in, CoherenceMessage) {
+        tbe.DataBlk := in_msg.cl;
+    }
+  }
+  action(t_updateTBEData_fwdfrom, "tff", desc="Update TBE Data") {
+    assert(is_valid(tbe));
+    peek(fwdfrom_in, CoherenceMessage) {
+        tbe.DataBlk := in_msg.cl;
+    }
+  }
+
+  action(v_allocateTBE, "v", desc="Allocate TBE entry") {
+    TBEs.allocate(address);
+    set_tbe(TBEs[address]);
+  }
+
+  action(w_deallocateTBE, "w", desc="Deallocate TBE entry") {
+    TBEs.deallocate(address);
+    unset_tbe();
+  }
+
+  action(p_popRequestQueue, "p", desc="Pop request queue") {
+    dmaRequestQueue_in.dequeue(clockEdge());
+  }
+
+  action(poprespfrom_in, "pr", desc="...") {
+    respfrom_in.dequeue(clockEdge());
+  }
+
+  action(popfwdfrom_in, "pf", desc="...") {
+    fwdfrom_in.dequeue(clockEdge());
+  }
+
+  action(stall, "\z", desc="...") {
+    // z_stall
+  }
+
+  action(incrementAcks, "iA", desc="...") {
+    assert(is_valid(tbe));
+    tbe.acksReceived := tbe.acksReceived + 1;
+  }
+  
+  action(notifyDir, "nD", desc="...") {
+    enqueue(respto_out, CoherenceMessage, responseLatency) {
+      out_msg.LineAddress := address;
+      out_msg.Type := CoherenceMessageType:DMA_ALL_ACKS;
+      out_msg.Sender := machineID;
+      out_msg.Destination.add(mapAddressToMachine(address, MachineType:Directory));
+      out_msg.MessageSize := MessageSizeType:Writeback_Control;
+    }
+  }
+
+  action(fwd_GetM_Ack_D, "fGAD", desc="...") {
+    peek(fwdfrom_in, CoherenceMessage) { 
+      enqueue(respto_out, CoherenceMessage, responseLatency) {
+        out_msg.LineAddress := address;
+        out_msg.cl := in_msg.cl;
+        out_msg.Type := CoherenceMessageType:GetM_Ack_D;
+        out_msg.Sender := machineID;
+        out_msg.Destination.add(mapAddressToMachine(address, MachineType:Directory));
+        out_msg.MessageSize := MessageSizeType:Writeback_Control;
+      }
+    }
+  }
+
+  action(setExpectedAcks, "sEA", desc="...") {
+    assert(is_valid(tbe));
+    peek(respfrom_in, CoherenceMessage) { 
+      assert(in_msg.Type == CoherenceMessageType:GetM_Ack_AD);
+      tbe.acksExpected := in_msg.acksExpected;
+    }
+  }
+
+  // REQUESTS FROM DMA SEQUENCER
+  transition(READY, ReadRequest, BUSY_RD) {
+    v_allocateTBE;
+    s_sendReadRequest;
+    p_popRequestQueue;
+  }
+  transition(READY, WriteRequest, BUSY_WR) {
+    v_allocateTBE;
+    s_sendWriteRequest;
+    p_popRequestQueue;
+  }
+
+  // GETS_ACK
+  transition(BUSY_RD, GetS_Ack_respfrom, READY) {
+    t_updateTBEData_respfrom;
+    d_dataCallback;
+    w_deallocateTBE;
+    poprespfrom_in;
+  }
+  transition(BUSY_RD, GetS_Ack_fwdfrom, READY) {
+    t_updateTBEData_fwdfrom;
+    d_dataCallback;
+    w_deallocateTBE;
+    popfwdfrom_in;
+  }
+
+  // INV_ACK
+  transition(BUSY_WR, Inv_Ack, BUSY_WR) {
+    incrementAcks;
+    poprespfrom_in;
+  }
+  transition(BUSY_WR_DATA_ACK, Inv_Ack, BUSY_WR_DATA_ACK) {
+    incrementAcks;
+    poprespfrom_in;
+  }
+  transition(BUSY_WR_DATA_ACK, Inv_Ack_Last, BUSY_WR_DIR) {
+    notifyDir;
+    poprespfrom_in;
+  }
+
+  // GetM_Ack_D
+  transition(BUSY_WR, GetM_Ack_D_fwdfrom, BUSY_WR_DIR) {
+    fwd_GetM_Ack_D;
+    popfwdfrom_in;
+  }
+
+  // GetM_Ack_AD
+  transition(BUSY_WR, GetM_Ack_AD_respfrom, BUSY_WR_DATA_ACK) {
+    setExpectedAcks;
+    poprespfrom_in;
+  }
+  transition(BUSY_WR, GetM_Ack_AD_fwdfrom, BUSY_WR_DATA_ACK) {
+    setExpectedAcks;
+    popfwdfrom_in;
+  }
+
+  // DMA_ACK
+  transition({BUSY_WR, BUSY_WR_DIR}, DMA_ACK, READY) {
+    a_ackCallback;
+    w_deallocateTBE;
+    poprespfrom_in;
+  }
+
+  transition({BUSY_RD, BUSY_WR, BUSY_WR_DATA_ACK, BUSY_WR_DIR}, {ReadRequest, WriteRequest}) {
+    stall;
+  }
+}
+// EOF

@@ -1,0 +1,45 @@
+//SLICC.ModularSLICC.msg.GenMsgEnum
+enumeration(CoherenceMessageType, desc="Types of coherence messages") {
+  Fwd_GetML1C1, desc="Fwd_GetML1C1";
+  Fwd_GetSL1C1, desc="Fwd_GetSL1C1";
+  GetML1C1, desc="GetML1C1";
+  GetM_Ack_ADL1C1, desc="GetM_Ack_ADL1C1";
+  GetM_Ack_DL1C1, desc="GetM_Ack_DL1C1";
+  GetSL1C1, desc="GetSL1C1";
+  GetS_AckL1C1, desc="GetS_AckL1C1";
+  InvL1C1, desc="InvL1C1";
+  Inv_AckL1C1, desc="Inv_AckL1C1";
+  M_Fwd_GetML1C1, desc="M_Fwd_GetML1C1";
+  M_Fwd_GetSL1C1, desc="M_Fwd_GetSL1C1";
+  O_Fwd_GetML1C1, desc="O_Fwd_GetML1C1";
+  O_Fwd_GetSL1C1, desc="O_Fwd_GetSL1C1";
+  PutEL1C1, desc="PutEL1C1";
+  PutML1C1, desc="PutML1C1";
+  PutSL1C1, desc="PutSL1C1";
+  Put_AckL1C1, desc="Put_AckL1C1";
+}
+
+//SLICC.ModularSLICC.msg.GenMsgStruct
+structure(CoherenceMessage, desc="...", interface="Message") {
+  Addr LineAddress,             desc="Physical address for this request";
+  CoherenceMessageType Type,   desc="Type of request (GetS, GetM, PutM, etc)";
+  MachineID Sender,            desc="Node who initiated the request";
+  NetDest Destination,         desc="Multicast destination mask";
+  MessageSizeType MessageSize, desc="size category of the message";
+  int acksExpectedL1C1, desc="Integer acksExpectedL1C1";
+  DataBlock cl, desc="Cache line / Data cl";
+
+
+  bool functionalRead(Packet *pkt) {
+    // A check on message type should appear here so that only those
+    // messages that contain data
+    return testAndRead(LineAddress, cl, pkt);
+  }
+
+  bool functionalWrite(Packet *pkt) {
+    // No check on message type required since the protocol should read
+    // data block from only those messages that contain valid data
+    return testAndWrite(LineAddress, cl, pkt);
+  }
+}
+

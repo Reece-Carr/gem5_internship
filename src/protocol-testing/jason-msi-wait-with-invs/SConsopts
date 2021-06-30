@@ -1,0 +1,7 @@
+Import('*')
+
+all_protocols.extend([
+'JASON_MSI_WAIT_WITH_INVS',
+])
+
+protocol_dirs.append(str(Dir('.').abspath))

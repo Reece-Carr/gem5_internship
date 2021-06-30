@@ -1,0 +1,7 @@
+Import('*')
+
+all_protocols.extend([
+'GENERATED_MESI',
+])
+
+protocol_dirs.append(str(Dir('.').abspath))

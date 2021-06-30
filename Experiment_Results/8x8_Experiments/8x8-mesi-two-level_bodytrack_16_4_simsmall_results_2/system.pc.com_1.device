@@ -1,0 +1,425 @@
+Linux version 5.4.49 (theo@theo-MS-7A38) (gcc version 9.3.0 (Ubuntu 9.3.0-17ubuntu1~20.04)) #1 SMP Fri Nov 13 20:11:26 GMT 2020
+Command line: earlyprintk=ttyS0 console=ttyS0 lpj=7999923 root=/dev/hda1
+CPU: vendor_id 'M5 Simulator' unknown, using generic init.
+CPU: Your system may be unstable.
+x86/fpu: x87 FPU will use FXSAVE
+BIOS-provided physical RAM map:
+BIOS-e820: [mem 0x0000000000000000-0x000000000009fbff] usable
+BIOS-e820: [mem 0x000000000009fc00-0x00000000000fffff] reserved
+BIOS-e820: [mem 0x0000000000100000-0x000000001fffffff] usable
+BIOS-e820: [mem 0x0000000020000000-0x00000000bfffffff] reserved
+BIOS-e820: [mem 0x00000000ffff0000-0x00000000ffffffff] reserved
+printk: bootconsole [earlyser0] enabled
+NX (Execute Disable) protection: active
+SMBIOS 2.5 present.
+DMI:  , BIOS  06/08/2008
+tsc: Fast TSC calibration failed
+last_pfn = 0x20000 max_arch_pfn = 0x400000000
+Disabled
+x86/PAT: MTRRs disabled, skipping PAT initialization too.
+CPU MTRRs all blank - virtualized system.
+x86/PAT: Configuration [0-7]: WB  WT  UC- UC  WB  WT  UC- UC  
+found SMP MP-table at [mem 0x000f0050-0x000f005f]
+ACPI: Early table checksum verification disabled
+ACPI BIOS Error (bug): A valid RSDP was not found (20190816/tbxfroot-210)
+Zone ranges:
+  DMA      [mem 0x0000000000001000-0x0000000000ffffff]
+  DMA32    [mem 0x0000000001000000-0x000000001fffffff]
+  Normal   empty
+Movable zone start for each node
+Early memory node ranges
+  node   0: [mem 0x0000000000001000-0x000000000009efff]
+  node   0: [mem 0x0000000000100000-0x000000001fffffff]
+Zeroed struct page in unavailable ranges: 98 pages
+Initmem setup node 0 [mem 0x0000000000001000-0x000000001fffffff]
+Intel MultiProcessor Specification v1.4
+MPTABLE: OEM ID: 
+MPTABLE: Product ID: 
+MPTABLE: APIC at: 0xFEE00000
+Processor #0 (Bootup-CPU)
+Processor #1
+Processor #2
+Processor #3
+Processor #4
+Processor #5
+Processor #6
+Processor #7
+Processor #8
+Processor #9
+Processor #10
+Processor #11
+Processor #12
+Processor #13
+Processor #14
+Processor #15
+IOAPIC[0]: apic_id 16, version 20, address 0xfec00000, GSI 0-23
+Processors: 16
+smpboot: Allowing 16 CPUs, 0 hotplug CPUs
+[mem 0xc0000000-0xfffeffff] available for PCI devices
+Booting paravirtualized kernel on bare hardware
+clocksource: refined-jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 1910969940391419 ns
+setup_percpu: NR_CPUS:8192 nr_cpumask_bits:16 nr_cpu_ids:16 nr_node_ids:1
+percpu: Embedded 49 pages/cpu s160856 r8192 d31656 u262144
+Built 1 zonelists, mobility grouping on.  Total pages: 129161
+Kernel command line: earlyprintk=ttyS0 console=ttyS0 lpj=7999923 root=/dev/hda1
+Dentry cache hash table entries: 65536 (order: 7, 524288 bytes, linear)
+Inode-cache hash table entries: 32768 (order: 6, 262144 bytes, linear)
+mem auto-init: stack:off, heap alloc:off, heap free:off
+Memory: 492188K/523896K available (8195K kernel code, 1281K rwdata, 2092K rodata, 1188K init, 1904K bss, 31708K reserved, 0K cma-reserved)
+Kernel/User page tables isolation: enabled
+rcu: Hierarchical RCU implementation.
+rcu: 	RCU restricting CPUs from NR_CPUS=8192 to nr_cpu_ids=16.
+rcu: RCU calculated value of scheduler-enlistment delay is 100 jiffies.
+rcu: Adjusting geometry for rcu_fanout_leaf=16, nr_cpu_ids=16
+NR_IRQS: 524544, nr_irqs: 552, preallocated irqs: 16
+random: get_random_bytes called from start_kernel+0x309/0x4e7 with crng_init=0
+Console: colour dummy device 80x25
+printk: console [ttyS0] enabled
+printk: console [ttyS0] enabled
+printk: bootconsole [earlyser0] disabled
+printk: bootconsole [earlyser0] disabled
+APIC: Switch to symmetric I/O mode setup
+Switched APIC routing to physical flat.
+..TIMER: vector=0x30 apic1=0 pin1=2 apic2=0 pin2=0
+tsc: Unable to calibrate against PIT
+tsc: No reference (HPET/PMTIMER) available
+tsc: Marking TSC unstable due to could not calculate TSC khz
+Calibrating delay loop (skipped) preset value.. 15999.84 BogoMIPS (lpj=7999923)
+pid_max: default: 32768 minimum: 301
+Mount-cache hash table entries: 1024 (order: 1, 8192 bytes, linear)
+Mountpoint-cache hash table entries: 1024 (order: 1, 8192 bytes, linear)
+mce: unknown CPU type - not enabling MCE support
+Last level iTLB entries: 4KB 0, 2MB 0, 4MB 0
+Last level dTLB entries: 4KB 0, 2MB 0, 4MB 0, 1GB 0
+Spectre V1 : Mitigation: usercopy/swapgs barriers and __user pointer sanitization
+Spectre V2 : Mitigation: Full generic retpoline
+Spectre V2 : Spectre v2 / SpectreRSB mitigation: Filling RSB on context switch
+Speculative Store Bypass: Vulnerable
+MDS: Vulnerable: Clear CPU buffers attempted, no microcode
+Freeing SMP alternatives memory: 12K
+smpboot: CPU0: M5 Simulator Fake M5 x86_64 CPU (family: 0xf, model: 0x25, stepping: 0x1)
+Performance Events: no PMU driver, software events only.
+rcu: Hierarchical SRCU implementation.
+smp: Bringing up secondary CPUs ...
+x86: Booting SMP configuration:
+.... node  #0, CPUs:        #1
+[Firmware Bug]: CPU1: APIC id mismatch. Firmware: 1 APIC: 0
+  #2
+[Firmware Bug]: CPU2: APIC id mismatch. Firmware: 2 APIC: 0
+  #3
+[Firmware Bug]: CPU3: APIC id mismatch. Firmware: 3 APIC: 0
+  #4
+[Firmware Bug]: CPU4: APIC id mismatch. Firmware: 4 APIC: 0
+  #5
+[Firmware Bug]: CPU5: APIC id mismatch. Firmware: 5 APIC: 0
+  #6
+[Firmware Bug]: CPU6: APIC id mismatch. Firmware: 6 APIC: 0
+  #7
+[Firmware Bug]: CPU7: APIC id mismatch. Firmware: 7 APIC: 0
+  #8
+[Firmware Bug]: CPU8: APIC id mismatch. Firmware: 8 APIC: 0
+  #9
+[Firmware Bug]: CPU9: APIC id mismatch. Firmware: 9 APIC: 0
+ #10
+[Firmware Bug]: CPU10: APIC id mismatch. Firmware: a APIC: 0
+ #11
+[Firmware Bug]: CPU11: APIC id mismatch. Firmware: b APIC: 0
+ #12
+[Firmware Bug]: CPU12: APIC id mismatch. Firmware: c APIC: 0
+ #13
+[Firmware Bug]: CPU13: APIC id mismatch. Firmware: d APIC: 0
+ #14
+[Firmware Bug]: CPU14: APIC id mismatch. Firmware: e APIC: 0
+ #15
+rcu: INFO: rcu_sched detected stalls on CPUs/tasks:
+	(detected by 14, t=60047 jiffies, g=-1091, q=0)
+rcu: All QSes seen, last rcu_sched kthread activity 60071 (4295155651-4295095580), jiffies_till_next_fqs=3, root ->qsmask 0x0
+swapper/14      R  running task        0     0      1 0x80004008
+Call Trace:
+ <IRQ>
+ sched_show_task+0xfd/0x131
+ rcu_sched_clock_irq+0x463/0x52d
+ update_process_times+0x1f/0x3d
+ tick_periodic+0x5e/0x68
+ tick_handle_periodic+0x1b/0x51
+ smp_apic_timer_interrupt+0xae/0x10a
+ apic_timer_interrupt+0xf/0x20
+ </IRQ>
+RIP: 0010:default_idle+0x18/0x27
+Code: 8d 65 d8 44 89 e0 5b 41 5c 41 5d 41 5e 41 5f 5d c3 90 bf 01 00 00 00 65 8b 35 dc 6c af 7e e8 f9 f6 af ff e8 4e f6 af ff fb f4 <83> cf ff 65 8b 35 c6 6c af 7e e9 e3 f6 af ff 53 65 48 8b 1c 25 00
+RSP: 0000:ffffc900000d3ee0 EFLAGS: 00000246 ORIG_RAX: ffffffffffffff13
+RAX: 0000000000000000 RBX: ffff88801edd2640 RCX: 0000000000000000
+RDX: 0000000000000001 RSI: 000000000000000e RDI: 0000000000000001
+RBP: 0000000000000000 R08: 0000000000000000 R09: 0000000000000000
+R10: 00000000000003fa R11: 0000000000000000 R12: 0000000000000000
+R13: 000000000000000e R14: 0000000000000000 R15: 0000000000000000
+ do_idle+0xb2/0x1bb
+ cpu_startup_entry+0x1a/0x1c
+ start_secondary+0x14b/0x169
+ secondary_startup_64+0xa4/0xb0
+rcu: rcu_sched kthread starved for 60579 jiffies! g-1091 f0x2 RCU_GP_WAIT_FQS(5) ->state=0x0 ->cpu=0
+rcu: RCU grace-period kthread stack dump:
+rcu_sched       R  running task        0    10      2 0x80004000
+Call Trace:
+ __schedule+0x3b4/0x3fb
+ schedule+0x71/0x91
+ schedule_timeout+0xac/0xe5
+ ? del_timer_sync+0x2c/0x2c
+ rcu_gp_kthread+0x4d4/0x707
+ ? rcu_exp_need_qs+0x33/0x33
+ kthread+0xe4/0xe9
+ ? kthread_delayed_work_timer_fn+0x7e/0x7e
+ ret_from_fork+0x35/0x40
+[Firmware Bug]: CPU15: APIC id mismatch. Firmware: f APIC: 0
+smp: Brought up 1 node, 16 CPUs
+smpboot: Max logical packages: 16
+smpboot: Total of 16 processors activated (255997.53 BogoMIPS)
+devtmpfs: initialized
+clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 1911260446275000 ns
+futex hash table entries: 4096 (order: 6, 262144 bytes, linear)
+NET: Registered protocol family 16
+audit: initializing netlink subsys (disabled)
+audit: type=2000 audit(1325376547.847:1): state=initialized audit_enabled=0 res=1
+cpuidle: using governor ladder
+PCI: Using configuration type 1 for base access
+unchecked MSR access error: RDMSR from 0x1b0 at rIP: 0xffffffff810222ba (native_read_msr.constprop.0+0x5/0x33)
+Call Trace:
+ intel_epb_restore+0xf/0x79
+ ? intel_epb_restore+0x79/0x79
+ intel_epb_online+0xe/0x2a
+ cpuhp_invoke_callback+0xb0/0x240
+ ? __wake_up_common+0xa7/0x12f
+ cpuhp_thread_fun+0xa6/0xd8
+ smpboot_thread_fn+0x139/0x14e
+ ? smpboot_register_percpu_thread+0xc7/0xc7
+ kthread+0xe4/0xe9
+ ? kthread_delayed_work_timer_fn+0x7e/0x7e
+ ret_from_fork+0x35/0x40
+ENERGY_PERF_BIAS: Set to 'normal', was 'performance'
+unchecked MSR access error: WRMSR to 0x1b0 (tried to write 0x0000000000000006) at rIP: 0xffffffff81022344 (intel_epb_restore+0x5c/0x79)
+Call Trace:
+ ? intel_epb_restore+0x79/0x79
+ intel_epb_online+0xe/0x2a
+ cpuhp_invoke_callback+0xb0/0x240
+ ? __wake_up_common+0xa7/0x12f
+ cpuhp_thread_fun+0xa6/0xd8
+ smpboot_thread_fn+0x139/0x14e
+ ? smpboot_register_percpu_thread+0xc7/0xc7
+ kthread+0xe4/0xe9
+ ? kthread_delayed_work_timer_fn+0x7e/0x7e
+ ret_from_fork+0x35/0x40
+HugeTLB registered 2.00 MiB page size, pre-allocated 0 pages
+ACPI: Interpreter disabled.
+vgaarb: loaded
+SCSI subsystem initialized
+usbcore: registered new interface driver usbfs
+usbcore: registered new interface driver hub
+usbcore: registered new device driver usb
+pps_core: LinuxPPS API ver. 1 registered
+pps_core: Software ver. 5.3.6 - Copyright 2005-2007 Rodolfo Giometti <giometti@linux.it>
+PTP clock support registered
+PCI: Probing PCI hardware
+PCI host bridge to bus 0000:00
+pci_bus 0000:00: root bus resource [io  0x0000-0xffff]
+pci_bus 0000:00: root bus resource [mem 0x00000000-0xffffffffffff]
+pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+pci 0000:00:04.0: [8086:7111] type 00 class 0x010180
+pci 0000:00:04.0: reg 0x20: [io  0x0000-0x000f]
+pci 0000:00:04.0: reg 0x30: [mem 0x00000000-0x000007ff pref]
+pci 0000:00:04.0: legacy IDE quirk: reg 0x10: [io  0x01f0-0x01f7]
+pci 0000:00:04.0: legacy IDE quirk: reg 0x14: [io  0x03f6]
+pci 0000:00:04.0: legacy IDE quirk: reg 0x18: [io  0x0170-0x0177]
+pci 0000:00:04.0: legacy IDE quirk: reg 0x1c: [io  0x0376]
+pci_bus 0000:00: busn_res: [bus 00-ff] end is updated to 00
+clocksource: Switched to clocksource refined-jiffies
+VFS: Disk quotas dquot_6.6.0
+VFS: Dquot-cache hash table entries: 512 (order 0, 4096 bytes)
+pnp: PnP ACPI: disabled
+thermal_sys: Registered thermal governor 'step_wise'
+thermal_sys: Registered thermal governor 'user_space'
+pci 0000:00:04.0: BAR 6: assigned [mem 0xc0000000-0xc00007ff pref]
+pci 0000:00:04.0: BAR 4: assigned [io  0x1000-0x100f]
+pci_bus 0000:00: resource 4 [io  0x0000-0xffff]
+pci_bus 0000:00: resource 5 [mem 0x00000000-0xffffffffffff]
+NET: Registered protocol family 2
+tcp_listen_portaddr_hash hash table entries: 256 (order: 0, 4096 bytes, linear)
+TCP established hash table entries: 4096 (order: 3, 32768 bytes, linear)
+TCP bind hash table entries: 4096 (order: 4, 65536 bytes, linear)
+TCP: Hash tables configured (established 4096 bind 4096)
+UDP hash table entries: 256 (order: 1, 8192 bytes, linear)
+UDP-Lite hash table entries: 256 (order: 1, 8192 bytes, linear)
+NET: Registered protocol family 1
+PCI: CLS 0 bytes, default 64
+platform rtc_cmos: registered platform RTC device (no PNP device found)
+workingset: timestamp_bits=62 max_order=17 bucket_order=0
+fuse: init (API version 7.31)
+Block layer SCSI generic (bsg) driver version 0.4 loaded (major 252)
+io scheduler mq-deadline registered
+io scheduler kyber registered
+acpiphp_ibm: ibm_acpiphp_init: acpi_walk_namespace failed
+Serial: 8250/16550 driver, 4 ports, IRQ sharing disabled
+serial8250: ttyS0 at I/O 0x3f8 (irq = 4, base_baud = 115200) is a 8250
+Linux agpgart interface v0.103
+brd: module loaded
+loop: module loaded
+Uniform Multi-Platform E-IDE driver
+piix 0000:00:04.0: IDE controller (0x8086:0x7111 rev 0x00)
+pci 0000:00:04.0: enabling device (0000 -> 0001)
+pci 0000:00:04.0: PCI->APIC IRQ transform: INT A -> IRQ 16
+piix 0000:00:04.0: not 100% native mode: will probe irqs later
+legacy IDE will be removed in 2021, please switch to libata
+Report any missing HW support to linux-ide@vger.kernel.org
+    ide0: BM-DMA at 0x1000-0x1007
+    ide1: BM-DMA at 0x1008-0x100f
+hda: M5 IDE Disk, ATA DISK drive
+hda: UDMA/33 mode selected
+ide0 at 0x1f0-0x1f7,0x3f6 on irq 14
+ide1 at 0x170-0x177,0x376 on irq 15
+ide_generic: please use "probe_mask=0x3f" module parameter for probing all legacy ISA IDE ports
+ide-gd driver 1.18
+hda: max request size: 128KiB
+hda: 50331648 sectors (25769 MB), CHS=49932/16/63
+ hda: hda1 hda2 < hda5 >
+ide-cd driver 5.00
+Loading iSCSI transport class v2.0-870.
+e1000: Intel(R) PRO/1000 Network Driver - version 7.3.21-k8-NAPI
+e1000: Copyright (c) 1999-2006 Intel Corporation.
+e1000e: Intel(R) PRO/1000 Network Driver - 3.2.6-k
+e1000e: Copyright(c) 1999 - 2015 Intel Corporation.
+igb: Intel(R) Gigabit Ethernet Network Driver - version 5.6.0-k
+igb: Copyright (c) 2007-2014 Intel Corporation.
+igbvf: Intel(R) Gigabit Virtual Function Network Driver - version 2.4.0-k
+igbvf: Copyright (c) 2009 - 2012 Intel Corporation.
+ixgbe: Intel(R) 10 Gigabit PCI Express Network Driver - version 5.1.0-k
+ixgbe: Copyright (c) 1999-2016 Intel Corporation.
+ixgbevf: Intel(R) 10 Gigabit PCI Express Virtual Function Network Driver - version 4.1.0-k
+ixgbevf: Copyright (c) 2009 - 2018 Intel Corporation.
+ixgb: Intel(R) PRO/10GbE Network Driver - version 1.0.135-k2-NAPI
+ixgb: Copyright (c) 1999-2008 Intel Corporation.
+ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+ehci-pci: EHCI PCI platform driver
+ohci_hcd: USB 1.1 'Open' Host Controller (OHCI) Driver
+ohci-pci: OHCI PCI platform driver
+uhci_hcd: USB Universal Host Controller Interface driver
+i8042: PNP: No PS/2 controller found.
+i8042: Probing ports directly.
+serio: i8042 KBD port at 0x60,0x64 irq 1
+mousedev: PS/2 mouse device common for all mice
+usbcore: registered new interface driver usbhid
+usbhid: USB HID core driver
+NET: Registered protocol family 17
+mce: Unable to init MCE device (rc: -5)
+IPI shorthand broadcast: enabled
+Unstable clock detected, switching default tracing clock to "global"
+If you want to keep using the local clock, then add:
+  "trace_clock=local"
+on the kernel command line
+EXT4-fs (hda1): mounted filesystem with ordered data mode. Opts: (null)
+VFS: Mounted root (ext4 filesystem) on device 3:1.
+devtmpfs: mounted
+Freeing unused kernel image memory: 1188K
+rcu: INFO: rcu_sched detected stalls on CPUs/tasks:
+rcu: 	2-...!: (1 GPs behind) idle=c54/0/0x0 softirq=221/221 fqs=0 
+rcu: 	3-...!: (0 ticks this GP) idle=d08/0/0x0 softirq=213/213 fqs=0 
+	(detected by 6, t=60093 jiffies, g=-887, q=3458)
+Sending NMI from CPU 6 to CPUs 2:
+NMI backtrace for cpu 2
+CPU: 2 PID: 0 Comm: swapper/2 Not tainted 5.4.49 #1
+Hardware name:  , BIOS  06/08/2008
+RIP: 0010:__current_set_polling+0x9/0xf
+Code: e8 49 bb fd ff 48 83 c4 20 5b 41 5c 41 5d c3 8b 47 3c c3 0f 0b b8 01 00 00 00 c3 c3 c3 31 c0 c3 c3 65 48 8b 04 25 00 5d 01 00 <f0> 80 48 02 20 c3 0f 0b 0f 0b 41 54 51 4c 8b a7 60 08 00 00 48 85
+RSP: 0000:ffffc90000073ee0 EFLAGS: 00000246
+RAX: ffff88801ed72340 RBX: ffff88801ed72340 RCX: ffff88801f2a6f40
+RDX: 0000000000000001 RSI: 0000000000000002 RDI: 00000000ffffffff
+RBP: 0000000000000000 R08: 0000000000000203 R09: 0000000000000000
+R10: 0000000000000000 R11: 0000000000000400 R12: 0000000000000000
+R13: 0000000000000002 R14: 0000000000000000 R15: 0000000000000000
+FS:  0000000000000000(0000) GS:ffff88801f280000(0000) knlGS:0000000000000000
+CS:  0010 DS: 0000 ES: 0000 CR0: 0000000080050033
+CR2: 0000000000000000 CR3: 0000000001e0a000 CR4: 00000000000006a0
+Call Trace:
+ do_idle+0x165/0x1bb
+ cpu_startup_entry+0x1a/0x1c
+ start_secondary+0x14b/0x169
+ secondary_startup_64+0xa4/0xb0
+INFO: NMI handler (nmi_cpu_backtrace_handler) took too long to run: 0.000 msecs
+Sending NMI from CPU 6 to CPUs 3:
+NMI backtrace for cpu 3 skipped: idling at default_idle+0x18/0x27
+rcu: rcu_sched kthread starved for 60798 jiffies! g-887 f0x0 RCU_GP_WAIT_FQS(5) ->state=0x402 ->cpu=3
+rcu: RCU grace-period kthread stack dump:
+rcu_sched       I    0    10      2 0x80004000
+Call Trace:
+ __schedule+0x3b4/0x3fb
+ schedule+0x71/0x91
+ schedule_timeout+0xac/0xe5
+ ? del_timer_sync+0x2c/0x2c
+ rcu_gp_kthread+0x4d4/0x707
+ ? rcu_exp_need_qs+0x33/0x33
+ kthread+0xe4/0xe9
+ ? kthread_delayed_work_timer_fn+0x7e/0x7e
+ ret_from_fork+0x35/0x40
+rcu: INFO: rcu_sched detected stalls on CPUs/tasks:
+rcu: 	3-...!: (0 ticks this GP) idle=65a/0/0x0 softirq=213/213 fqs=1 
+	(detected by 0, t=240007 jiffies, g=-887, q=3461)
+Sending NMI from CPU 0 to CPUs 3:
+NMI backtrace for cpu 3 skipped: idling at default_idle+0x18/0x27
+rcu: rcu_sched kthread starved for 179062 jiffies! g-887 f0x0 RCU_GP_WAIT_FQS(5) ->state=0x402 ->cpu=3
+rcu: RCU grace-period kthread stack dump:
+rcu_sched       I    0    10      2 0x80004000
+Call Trace:
+ __schedule+0x3b4/0x3fb
+ schedule+0x71/0x91
+ schedule_timeout+0xac/0xe5
+ ? del_timer_sync+0x2c/0x2c
+ rcu_gp_kthread+0x4d4/0x707
+ ? rcu_exp_need_qs+0x33/0x33
+ kthread+0xe4/0xe9
+ ? kthread_delayed_work_timer_fn+0x7e/0x7e
+ ret_from_fork+0x35/0x40
+rcu: INFO: rcu_sched detected stalls on CPUs/tasks:
+rcu: 	2-...!: (2 GPs behind) idle=5ac/0/0x0 softirq=221/221 fqs=0 
+rcu: 	3-...!: (0 ticks this GP) idle=d6a/1/0x4000000000000000 softirq=213/213 fqs=0 
+rcu: 	11-...!: (1 GPs behind) idle=9d0/0/0x0 softirq=162/163 fqs=0 
+rcu: 	14-...!: (1 GPs behind) idle=718/0/0x0 softirq=142/144 fqs=0 
+rcu: 	15-...!: (1 GPs behind) idle=414/0/0x0 softirq=149/150 fqs=0 
+	(detected by 0, t=60002 jiffies, g=-883, q=3461)
+Sending NMI from CPU 0 to CPUs 2:
+NMI backtrace for cpu 2 skipped: idling at default_idle+0x18/0x27
+Sending NMI from CPU 0 to CPUs 3:
+NMI backtrace for cpu 3 skipped: idling at default_idle+0x18/0x27
+Sending NMI from CPU 0 to CPUs 11:
+NMI backtrace for cpu 11 skipped: idling at default_idle+0x18/0x27
+Sending NMI from CPU 0 to CPUs 14:
+NMI backtrace for cpu 14
+CPU: 14 PID: 0 Comm: swapper/14 Not tainted 5.4.49 #1
+Hardware name:  , BIOS  06/08/2008
+RIP: 0010:do_idle+0x4c/0x1bb
+Code: 08 31 c0 65 44 8b 2d 8c 3b fa 7e e8 35 fe ff ff 48 8b 03 a8 08 0f 85 42 01 00 00 0f ae e8 fa 44 89 e8 48 0f a3 05 1d d2 ec 00 <72> 0a e8 42 d9 fd ff e8 21 cf fa ff e8 10 cf fa ff 83 3d 5d da ec
+RSP: 0000:ffffc900000d3ee8 EFLAGS: 00000047
+RAX: 000000000000000e RBX: ffff88801edd2640 RCX: ffff88801f5a6f40
+RDX: ffff88801f5a6f40 RSI: ffff88801f5a7020 RDI: 0000000000000002
+RBP: 0000000000000000 R08: 0000000000000203 R09: 0000000000000000
+R10: 0000000000000000 R11: 0000000000021400 R12: 0000000000000000
+R13: 000000000000000e R14: 0000000000000000 R15: 0000000000000000
+FS:  0000000000000000(0000) GS:ffff88801f580000(0000) knlGS:0000000000000000
+CS:  0010 DS: 0000 ES: 0000 CR0: 0000000080050033
+CR2: 0000000000000000 CR3: 0000000001e0a000 CR4: 00000000000006a0
+Call Trace:
+ cpu_startup_entry+0x1a/0x1c
+ start_secondary+0x14b/0x169
+ secondary_startup_64+0xa4/0xb0
+Sending NMI from CPU 0 to CPUs 15:
+NMI backtrace for cpu 15 skipped: idling at default_idle+0x18/0x27
+rcu: rcu_sched kthread starved for 60002 jiffies! g-883 f0x0 RCU_GP_WAIT_FQS(5) ->state=0x402 ->cpu=3
+rcu: RCU grace-period kthread stack dump:
+rcu_sched       I    0    10      2 0x80004000
+Call Trace:
+ __schedule+0x3b4/0x3fb
+ schedule+0x71/0x91
+ schedule_timeout+0xac/0xe5
+ ? del_timer_sync+0x2c/0x2c
+ rcu_gp_kthread+0x4d4/0x707
+ ? rcu_exp_need_qs+0x33/0x33
+ kthread+0xe4/0xe9
+ ? kthread_delayed_work_timer_fn+0x7e/0x7e
+ ret_from_fork+0x35/0x40

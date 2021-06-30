@@ -1,0 +1,6 @@
+protocol "GENERATED_MSI";
+include "RubySlicc_interfaces.slicc";
+include "MSI_Proto_msg.sm";
+include "MSI_Proto_cache.sm";
+include "MSI_Proto_dir.sm";
+include "MSI_Proto_dma.sm";

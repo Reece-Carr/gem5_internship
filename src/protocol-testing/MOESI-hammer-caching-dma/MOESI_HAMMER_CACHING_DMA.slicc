@@ -1,0 +1,6 @@
+protocol "MOESI_HAMMER_CACHING_DMA";
+include "RubySlicc_interfaces.slicc";
+include "msg.sm";
+include "cache.sm";
+include "dir.sm";
+include "dma.sm";

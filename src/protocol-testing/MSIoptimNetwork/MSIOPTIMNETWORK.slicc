@@ -1,0 +1,6 @@
+protocol "MSIOPTIMNETWORK";
+include "RubySlicc_interfaces.slicc";
+include "MSIoptimNetwork_msg.sm";
+include "MSIoptimNetwork_cache.sm";
+include "MSIoptimNetwork_dir.sm";
+include "MSIoptimNetwork_dma.sm";

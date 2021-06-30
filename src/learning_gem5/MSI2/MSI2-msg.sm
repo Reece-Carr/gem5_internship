@@ -1,0 +1,61 @@
+//SLICC.ModularSLICC.msg.GenMsgEnum
+enumeration(CoherenceMessageType, desc="Types of coherence messages") {
+  GetS, desc="GetS";
+  GetS_Ack, desc="GetS_Ack";
+  GetM, desc="GetM";
+  GetM_Ack_D, desc="GetM_Ack_D";
+  GetM_Ack_AD, desc="GetM_Ack_AD";
+  Inv_Ack, desc="Inv_Ack";
+  Upgrade, desc="Upgrade";
+  PutS, desc="PutS";
+  Put_Ack, desc="Put_Ack";
+  WB, desc="WB";
+  PutM, desc="PutM";
+  Inv, desc="Inv";
+  Fwd_GetS, desc="Fwd_GetS";
+  Fwd_GetM, desc="Fwd_GetM";
+  DMA_WRITE, desc="DMA_WRITE";
+  DMA_READ, desc="DMA_READ";
+  DMA_ACK, desc="DMA_ACK";
+  DMA_ALL_ACKS, desc="DMA_ALL_ACKS";
+
+}
+//SLICC.ModularSLICC.msg.GenMsgStruct
+structure(CoherenceMessage, desc="...", interface="Message") {
+  Addr LineAddress,             desc="Physical address for this request";
+  Addr PhysicalAddress,             desc="Physical address for this request";
+  int Len, desc="duh";
+  CoherenceMessageType Type,   desc="Type of request (GetS, GetM, PutM, etc)";
+  MachineID Sender,            desc="Node who initiated the request";
+  NetDest Destination,         desc="Multicast destination mask";
+  MessageSizeType MessageSize, desc="size category of the message";
+  DataBlock cl, desc="Cache line / Data cl";
+  int acksExpected, desc="Integer acksExpected";
+
+
+  bool functionalRead(Packet *pkt) {
+    // A check on message type should appear here so that only those
+    // messages that contain data
+    return testAndRead(LineAddress, cl, pkt);
+  }
+
+  bool functionalWrite(Packet *pkt) {
+    // No check on message type required since the protocol should read
+    // data block from only those messages that contain valid data
+    return testAndWrite(LineAddress, cl, pkt);
+  }
+}
+
+structure(CondMsg, desc="...", interface="Message") {
+  Addr LineAddress,             desc="Physical address for this request";
+  int Net, desc="The network the condition pertains to.";
+  MachineID OriginalSender,            desc="Node who initiated the request";
+
+  bool functionalRead(Packet *pkt) {
+    return true; // No data in CondMsg
+  }
+
+  bool functionalWrite(Packet *pkt) {
+    return true; // No data in CondMsg
+  }
+}

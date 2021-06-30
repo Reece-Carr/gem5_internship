@@ -1,0 +1,1439 @@
+//SLICC.ModularSLICC.dir.GenDirHeader
+machine(MachineType:Directory, "Directory protocol")
+:
+
+  DirectoryMemory *directory;
+  // The following latencies should be exposed as command-line parameters in a future update
+  Cycles toMemLatency := 5;
+  Cycles toDMALatency := 10;
+  Cycles responseLatency := 1;
+
+  // Forwarding requests from the directory *to* the caches.
+  MessageBuffer *fwdFrom, network="To", virtual_network="1",
+        vnet_type="forward";
+  // Response from the directory *to* the cache.
+  MessageBuffer *respFrom, network="To", virtual_network="2",
+        vnet_type="response";
+
+  // Requests *from* the cache to the directory
+  MessageBuffer *reqTo, network="From", virtual_network="0",
+        vnet_type="request";
+
+  // Responses *from* the cache to the directory
+  MessageBuffer *respTo, network="From", virtual_network="2",
+        vnet_type="response";
+
+  // Required networks
+  MessageBuffer *requestToMemory;
+  MessageBuffer *responseFromMemory;
+  MessageBuffer *conditionQueue;
+
+{
+  //SLICC.ModularSLICC.dir.GenDirStateDecl
+  state_declaration(State, desc="Directory states", default="Directory_State_I") {
+    M, AccessPermission:Invalid, desc="... TODO ...";
+    MI_m, AccessPermission:Busy, desc="...";
+    S, AccessPermission:Read_Only, desc="... TODO ...";
+    S_m, AccessPermission:Read_Write, desc="... TODO ...";
+    M_m, AccessPermission:Read_Write, desc="... TODO ...";
+        S_D, AccessPermission:Busy,      desc="Moving to S, but need data";
+        SS_m, AccessPermission:Busy,       desc="Moving to S waiting for ack";
+    M_GetS, AccessPermission:Invalid, desc="... TODO ...";
+    I, AccessPermission:Read_Write, desc="... TODO ..."; 
+    I_GetM__M, AccessPermission:Read_Write, desc="... TODO ...";
+    I_GetS__S, AccessPermission:Read_Write, desc="... TODO ...";
+    I_PutM_COND_ownerPutMsrc_I, AccessPermission:Read_Write, desc="... TODO ...";
+    I_Upgrade__M, AccessPermission:Read_Write, desc="... TODO ...";
+    M_PutM_COND_ownerPutMsrc_I, AccessPermission:Read_Write, desc="... TODO ...";
+    M_GetS_WB_COND_WBsrcowner_S, AccessPermission:Read_Write, desc="... TODO ...";
+    S_GetM_COND_SETFUNC_cachecontainsUpgradesrc_M, AccessPermission:Read_Write, desc="... TODO ...";
+    S_GetM_NCOND_SETFUNC_cachecontainsUpgradesrc_M, AccessPermission:Read_Write, desc="... TODO ...";
+    S_GetS__S, AccessPermission:Read_Write, desc="... TODO ...";
+    S_PutM_COND_ownerPutMsrc_S, AccessPermission:Read_Write, desc="... TODO ...";
+    S_Upgrade_COND_SETFUNC_cachecontainsUpgradesrc_M, AccessPermission:Read_Write, desc="... TODO ...";
+    S_Upgrade_NCOND_SETFUNC_cachecontainsUpgradesrc_M, AccessPermission:Read_Write, desc="... TODO ...";
+    I_PutM_branch_respto, AccessPermission: Read_Write, desc="...";
+    M_PutM_branch_respto, AccessPermission: Read_Write, desc="...";
+    M_GetS_branch_respto, AccessPermission: Read_Write, desc="...";
+    M_GetS_WB_branch_respto, AccessPermission: Read_Write, desc="...";
+    S_GetM_branch_respto, AccessPermission: Read_Write, desc="...";
+    S_PutS_branch_respto, AccessPermission: Read_Write, desc="...";
+    S_PutM_branch_respto, AccessPermission: Read_Write, desc="...";
+    I_PutM_branch_fwdto, AccessPermission: Read_Write, desc="...";
+    M_PutM_branch_fwdto, AccessPermission: Read_Write, desc="...";
+    M_GetS_branch_fwdto, AccessPermission: Read_Write, desc="...";
+    M_GetS_WB_branch_fwdto, AccessPermission: Read_Write, desc="...";
+    S_GetM_branch_fwdto, AccessPermission: Read_Write, desc="...";
+    S_PutS_branch_fwdto, AccessPermission: Read_Write, desc="...";
+    S_PutM_branch_fwdto, AccessPermission: Read_Write, desc="...";
+    I_PutM_branch_reqto, AccessPermission: Read_Write, desc="...";
+    M_PutM_branch_reqto, AccessPermission: Read_Write, desc="...";
+    M_GetS_branch_reqto, AccessPermission: Read_Write, desc="...";
+    M_GetS_WB_branch_reqto, AccessPermission: Read_Write, desc="...";
+    S_GetM_branch_reqto, AccessPermission: Read_Write, desc="...";
+    S_PutS_branch_reqto, AccessPermission: Read_Write, desc="...";
+    S_PutM_branch_reqto, AccessPermission: Read_Write, desc="...";
+  }
+  //SLICC.ModularSLICC.dir.GenDirEvents
+  enumeration(Event, desc="Directory events") {
+    Stall, desc="Stall, please!";
+    GetS, desc="...";
+    GetM, desc="...";
+    WB, desc="...";
+    PutSLast, desc="...";
+    PutSNotLast, desc="...";
+    PutMOwner, desc="...";
+    PutMNonOwner, desc="...";
+    branchOutcome_1, desc="...";
+    branchOutcome_2, desc="...";
+    Memory_Read, desc="...";
+    Memory_Write, desc="...";
+    IGetMEvent, desc="Trynna fix this";
+    IGetSEvent, desc="Trynna fix this";
+    PutM_fwdto, desc="...";
+    PutS_fwdto, desc="...";
+    GetM_fwdto, desc="...";
+    GetS_fwdto, desc="...";
+    WB_fwdto, desc="...";
+    PutM_respto, desc="...";
+    PutS_respto, desc="...";
+    GetM_respto, desc="...";
+    GetS_respto, desc="...";
+    WB_respto, desc="...";
+    PutM_reqto, desc="...";
+    PutS_reqto, desc="...";
+    GetM_reqto, desc="...";
+    GetS_reqto, desc="...";
+    WB_reqto, desc="...";
+  }
+  //SLICC.ModularSLICC.dir.GenDirStruct
+  structure(Entry, desc="Stored variables of the Directory machine", interface="AbstractCacheEntry", main="false") {
+    State DirectoryState, desc="Directory state";
+    DataBlock clL1, desc="... TODO ...";
+    NetDest cacheL1L1, desc="... TODO ...";
+    NetDest ownerL1, desc="... TODO ...";
+  }
+  //SLICC.ModularSLICC.dir.GenDirTBE
+  structure(TBE, desc="TBE entries for Directory machine") {
+    //Addr PhysicalAddress, desc="physical address";
+    //State TBEState,       desc="Transient State";
+    //DataBlock DataBlk,    desc="Data to be written";
+    MachineID Sender,       desc="...";
+  }
+  
+  structure(TBETable, external="yes"){
+    TBE lookup(Addr);
+    void allocate(Addr);
+    void deallocate(Addr);
+    bool isPresent(Addr);
+  }
+  
+  TBETable TBEs, template="<Directory_TBE>", constructor="m_number_of_TBEs";
+  
+  void set_tbe(TBE b);
+  void unset_tbe();
+  //SLICC.ModularSLICC.dir.GenDirStaticFns
+  Tick clockEdge();
+  Tick cyclesToTicks(Cycles c);
+  
+  Entry getDirectoryEntry(Addr LineAddress), return_by_pointer = "yes" {
+    Entry entry := static_cast(Entry, "pointer", directory[LineAddress]);
+    if (is_invalid(entry)) {
+      entry := static_cast(Entry, "pointer", directory.allocate(LineAddress, new Entry));
+    }
+    return entry;
+  }
+  
+  State getState(TBE tbe, Addr LineAddress) {
+    if (directory.isPresent(LineAddress)) {
+      return getDirectoryEntry(LineAddress).DirectoryState;
+    } else {
+      return State:I;
+    }
+  }
+  
+  void setState(TBE tbe, Addr LineAddress, State state) {
+    if (directory.isPresent(LineAddress)) {
+      getDirectoryEntry(LineAddress).DirectoryState := state;
+
+      if (state == State:I) {
+        assert(getDirectoryEntry(LineAddress).cacheL1L1.count() == 0);
+        assert(getDirectoryEntry(LineAddress).ownerL1.count() == 0);
+      }
+      if (state == State:M) {
+        assert(getDirectoryEntry(LineAddress).cacheL1L1.count() == 0);
+        assert(getDirectoryEntry(LineAddress).ownerL1.count() == 1);
+      }
+      if (state == State:S) {
+        assert(getDirectoryEntry(LineAddress).ownerL1.count() == 0);
+        assert(getDirectoryEntry(LineAddress).cacheL1L1.count() > 0);
+      }
+    
+    }
+  }
+  
+  AccessPermission getAccessPermission(Addr LineAddress) {
+    if (directory.isPresent(LineAddress)) {
+      return Directory_State_to_permission(getDirectoryEntry(LineAddress).DirectoryState);
+    } else {
+      return AccessPermission:NotPresent;
+    }
+  }
+  
+  void setAccessPermission(Addr LineAddress, State state) {
+    if (directory.isPresent(LineAddress)) {
+      getDirectoryEntry(LineAddress).changePermission(Directory_State_to_permission(state));
+    }
+  }
+  
+  void functionalRead(Addr addr, Packet *pkt) {
+      functionalMemoryRead(pkt);
+  }
+
+  // This returns the number of writes. So, if we write then return 1
+  int functionalWrite(Addr addr, Packet *pkt) {
+      if (functionalMemoryWrite(pkt)) {
+          return 1;
+      } else {
+          return 0;
+      }
+  }
+  //SLICC.ModularSLICC.dir.GenDirOutPorts
+  out_port(conditionQueue_out, CondMsg, conditionQueue);
+  out_port(memQueue_out, MemoryMsg, requestToMemory);
+  out_port(fwdfrom_out, CoherenceMessage, fwdFrom);
+  out_port(respfrom_out, CoherenceMessage, respFrom);
+  in_port(conditionQueue_in, CondMsg, conditionQueue) {
+    if (conditionQueue_in.isReady(clockEdge())) {
+      peek (conditionQueue_in, CondMsg) {
+        Entry entry := getDirectoryEntry(in_msg.LineAddress);
+        TBE tbe := TBEs[in_msg.LineAddress];
+        State st := getState(tbe, in_msg.LineAddress);
+        Addr LineAddress := in_msg.LineAddress;
+        if (in_msg.Net == 1) {
+          // Net == 1 -> Net == respto_in
+          if (st == State:I_PutM_branch_respto || st == State:S_PutM_branch_respto
+              || st == State:M_GetS_WB_branch_respto) {
+            //if (entry.ownerL1 == in_msg.OriginalSender)  {
+            if (entry.ownerL1.isElement(in_msg.OriginalSender))  {
+              trigger(Event:branchOutcome_1, LineAddress, tbe);
+            //} else if (entry.ownerL1 != in_msg.OriginalSender)  {
+            } else {
+              trigger(Event:branchOutcome_2, LineAddress, tbe);
+            //} else {
+            //  error("Unedxpected branch outcome");
+            }
+          } else if (st == State:M_PutM_branch_respto) {
+            if (entry.ownerL1.isElement(in_msg.OriginalSender))  {
+              trigger(Event:branchOutcome_1, LineAddress, tbe);
+            //} else if (entry.ownerL1 != in_msg.OriginalSender)  {
+            } else {
+              trigger(Event:branchOutcome_2, LineAddress, tbe);
+            //} else {
+            //  error("Unedxpected branch outcome");
+            }
+          } else if (st == State:M_GetS_branch_respto) {
+            if (entry.ownerL1.isElement(in_msg.OriginalSender))  {
+              trigger(Event:branchOutcome_1, LineAddress, tbe);
+            //} else if (entry.ownerL1 != in_msg.OriginalSender)  {
+            } else {
+              trigger(Event:branchOutcome_2, LineAddress, tbe);
+            //} else {
+            //  error("Unedxpected branch outcome");
+            }
+          } else if (st == State:S_GetM_branch_respto) {
+            if (entry.cacheL1L1.isElement(in_msg.OriginalSender))  {
+              trigger(Event:branchOutcome_1, LineAddress, tbe);
+            } else {
+              trigger(Event:branchOutcome_2, LineAddress, tbe);
+            }
+          } else if (st == State:S_PutS_branch_respto) {
+            if (entry.cacheL1L1.count() == 0)  {
+              trigger(Event:branchOutcome_1, LineAddress, tbe);
+            } else if (entry.cacheL1L1.count() != 0)  {
+              trigger(Event:branchOutcome_2, LineAddress, tbe);
+            } else {
+              error("Unedxpected branch outcome");
+            }
+          } else {
+            error("Got CondMsg in unexpected state");
+          }
+        } else if (in_msg.Net == 2) {
+          // Net == 2 -> Net == fwdto_in
+          if (st == State:I_PutM_branch_fwdto || st == State:S_PutM_branch_fwdto || st == State:M_GetS_WB_branch_respto) {
+            //if (entry.ownerL1 == in_msg.OriginalSender)  {
+            if (entry.ownerL1.isElement(in_msg.OriginalSender))  {
+              trigger(Event:branchOutcome_1, LineAddress, tbe);
+            //} else if (entry.ownerL1 != in_msg.OriginalSender)  {
+            } else {
+              trigger(Event:branchOutcome_2, LineAddress, tbe);
+            //} else {
+            //  error("Unedxpected branch outcome");
+            }
+          } else if (st == State:M_PutM_branch_fwdto) {
+            if (entry.ownerL1.isElement(in_msg.OriginalSender))  {
+              trigger(Event:branchOutcome_1, LineAddress, tbe);
+            //} else if (entry.ownerL1 != in_msg.OriginalSender)  {
+            } else {
+              trigger(Event:branchOutcome_2, LineAddress, tbe);
+            //} else {
+            //  error("Unedxpected branch outcome");
+            }
+          } else if (st == State:M_GetS_branch_fwdto) {
+            if (entry.ownerL1.isElement(in_msg.OriginalSender))  {
+              trigger(Event:branchOutcome_1, LineAddress, tbe);
+            //} else if (entry.ownerL1 != in_msg.OriginalSender)  {
+            } else {
+              trigger(Event:branchOutcome_2, LineAddress, tbe);
+            //} else {
+            //  error("Unedxpected branch outcome");
+            }
+          } else if (st == State:S_GetM_branch_fwdto) {
+            if (entry.cacheL1L1.isElement(in_msg.OriginalSender))  {
+              trigger(Event:branchOutcome_1, LineAddress, tbe);
+            } else {
+              trigger(Event:branchOutcome_2, LineAddress, tbe);
+            } 
+          } else if (st == State:S_PutS_branch_fwdto) {
+            if (entry.cacheL1L1.count() == 0)  {
+              trigger(Event:branchOutcome_1, LineAddress, tbe);
+            } else if (entry.cacheL1L1.count() != 0)  {
+              trigger(Event:branchOutcome_2, LineAddress, tbe);
+            } else {
+              error("Unedxpected branch outcome");
+            }
+          } else {
+            error("Got CondMsg in unexpected state");
+          }
+        } else if (in_msg.Net == 0) {
+          // Net == 0 -> Net == reqto_in
+          if (st == State:I_PutM_branch_reqto || st == State:S_PutM_branch_reqto
+              || st == State:M_GetS_WB_branch_reqto) {
+            if (entry.ownerL1.isElement(in_msg.OriginalSender))  {
+              trigger(Event:branchOutcome_1, LineAddress, tbe);
+            //} else if (entry.ownerL1 != in_msg.OriginalSender)  {
+            } else {
+              trigger(Event:branchOutcome_2, LineAddress, tbe);
+            //} else {
+            //  error("Unedxpected branch outcome");
+            }
+          } else if (st == State:M_PutM_branch_reqto) {
+            if (entry.ownerL1.isElement(in_msg.OriginalSender))  {
+              trigger(Event:branchOutcome_1, LineAddress, tbe);
+            //} else if (entry.ownerL1 != in_msg.OriginalSender)  {
+            } else {
+              trigger(Event:branchOutcome_2, LineAddress, tbe);
+            //} else {
+            //  error("Unedxpected branch outcome");
+            }
+          } else if (st == State:M_GetS_branch_reqto) {
+            if (entry.ownerL1.isElement(in_msg.OriginalSender))  {
+              trigger(Event:branchOutcome_1, LineAddress, tbe);
+            //} else if (entry.ownerL1 != in_msg.OriginalSender)  {
+            } else {
+              trigger(Event:branchOutcome_2, LineAddress, tbe);
+            //} else {
+            //  error("Unedxpected branch outcome");
+            }
+          } else if (st == State:S_GetM_branch_reqto) {
+            if (entry.cacheL1L1.isElement(in_msg.OriginalSender))  {
+              trigger(Event:branchOutcome_1, LineAddress, tbe);
+            } else {
+              trigger(Event:branchOutcome_2, LineAddress, tbe);
+            }
+          } else if (st == State:S_PutS_branch_reqto) {
+            if (entry.cacheL1L1.count() == 0)  {
+              trigger(Event:branchOutcome_1, LineAddress, tbe);
+            } else if (entry.cacheL1L1.count() != 0)  {
+              trigger(Event:branchOutcome_2, LineAddress, tbe);
+            } else {
+              error("Unexpected branch outcome");
+            }
+          } else {
+            error("Got CondMsg in unexpected state");
+          }
+        } else {
+          error("Unrecognized net in condQueue");
+        }
+      }
+    }
+  }
+  //SLICC.ModularSLICC.dir.GenDirInPorts
+  in_port(memQueue_in, MemoryMsg, responseFromMemory) {
+    if (memQueue_in.isReady(clockEdge())) {
+      peek(memQueue_in, MemoryMsg) {
+        Addr LineAddress := in_msg.addr;
+        TBE tbe := TBEs[LineAddress];
+        State st := getState(tbe, LineAddress);
+        //DPRINTF(RubySlicc, "Dir at address 0x%x received message %d in state %d, net=memQueue_in\n", LineAddress, in_msg.Type, st);
+        if (st == State:MI_m) {
+            assert(in_msg.Type == MemoryRequestType:MEMORY_WB);
+            trigger(Event:Memory_Write, LineAddress, tbe);
+        } else if (st == State:S_m) {
+            assert(in_msg.Type == MemoryRequestType:MEMORY_READ);
+            trigger(Event:Memory_Read, LineAddress, tbe);
+        } else if (st == State:M_m) {
+            assert(in_msg.Type == MemoryRequestType:MEMORY_READ);
+            trigger(Event:Memory_Read, LineAddress, tbe);
+        } else if (st == State:SS_m) {
+            assert(in_msg.Type == MemoryRequestType:MEMORY_WB);
+            trigger(Event:Memory_Write, LineAddress, tbe);
+        } else if (st == State:I_GetM__M 
+              && in_msg.Type == MemoryRequestType:MEMORY_READ) {
+          trigger(Event:Memory_Read, LineAddress, tbe);
+        } else if (st == State:I_GetS__S 
+              && in_msg.Type == MemoryRequestType:MEMORY_READ) {
+          trigger(Event:Memory_Read, LineAddress, tbe);
+        } else if (st == State:I_PutM_COND_ownerPutMsrc_I 
+              && in_msg.Type == MemoryRequestType:MEMORY_WB) {
+          trigger(Event:Memory_Write, LineAddress, tbe);
+        } else if (st == State:I_Upgrade__M 
+              && in_msg.Type == MemoryRequestType:MEMORY_READ) {
+          trigger(Event:Memory_Read, LineAddress, tbe);
+        } else if (st == State:M_PutM_COND_ownerPutMsrc_I 
+              && in_msg.Type == MemoryRequestType:MEMORY_WB) {
+          trigger(Event:Memory_Write, LineAddress, tbe);
+        } else if (st == State:M_GetS_WB_COND_WBsrcowner_S 
+              && in_msg.Type == MemoryRequestType:MEMORY_WB) {
+          trigger(Event:Memory_Write, LineAddress, tbe);
+        } else if (st == State:S_GetM_COND_SETFUNC_cachecontainsUpgradesrc_M 
+              && in_msg.Type == MemoryRequestType:MEMORY_READ) {
+          trigger(Event:Memory_Read, LineAddress, tbe);
+        } else if (st == State:S_GetM_NCOND_SETFUNC_cachecontainsUpgradesrc_M 
+              && in_msg.Type == MemoryRequestType:MEMORY_READ) {
+          trigger(Event:Memory_Read, LineAddress, tbe);
+        } else if (st == State:S_GetS__S 
+              && in_msg.Type == MemoryRequestType:MEMORY_READ) {
+          trigger(Event:Memory_Read, LineAddress, tbe);
+        } else if (st == State:S_PutM_COND_ownerPutMsrc_S 
+              && in_msg.Type == MemoryRequestType:MEMORY_WB) {
+          trigger(Event:Memory_Write, LineAddress, tbe);
+        } else if (st == State:S_Upgrade_COND_SETFUNC_cachecontainsUpgradesrc_M 
+              && in_msg.Type == MemoryRequestType:MEMORY_READ) {
+          trigger(Event:Memory_Read, LineAddress, tbe);
+        } else if (st == State:S_Upgrade_NCOND_SETFUNC_cachecontainsUpgradesrc_M 
+              && in_msg.Type == MemoryRequestType:MEMORY_READ) {
+          trigger(Event:Memory_Read, LineAddress, tbe);
+        } else {
+          DPRINTF(RubySlicc, "State is %d\n", st);
+          error("Dir received memory message in unexpected state");
+        }
+      }
+    }
+  }
+  in_port(respto_in, CoherenceMessage, respTo) {
+    if (respto_in.isReady(clockEdge())) {
+      peek (respto_in, CoherenceMessage) {
+        Addr LineAddress := in_msg.LineAddress;
+        Entry entry := getDirectoryEntry(in_msg.LineAddress);
+        TBE tbe := TBEs[in_msg.LineAddress];
+        State st := getState(tbe, in_msg.LineAddress);
+        ////DPRINTF(RubySlicc, "Dir at address 0x%x received message %d in state %d, net=respto_in\n", LineAddress, in_msg.Type, st);
+        if (st == State:S_D) {
+            if (in_msg.Type == CoherenceMessageType:WB) {
+                trigger(Event:WB, LineAddress, tbe);
+            } else {
+                trigger(Event:Stall, LineAddress, tbe);
+            }
+        } else if (st == State:I) {
+          if (in_msg.Type == CoherenceMessageType:GetM) {
+            trigger(Event:GetM_respto, LineAddress, tbe);
+          } else if (in_msg.Type == CoherenceMessageType:GetS) {
+            trigger(Event:GetS_respto, LineAddress, tbe);
+          } else if (in_msg.Type == CoherenceMessageType:PutM) {
+            trigger(Event:PutM_respto, LineAddress, tbe);
+          } else if (in_msg.Type == CoherenceMessageType:PutS) {
+                    if (entry.cacheL1L1.count() == 1) {
+                        assert(entry.cacheL1L1.isElement(in_msg.Sender));
+                        trigger(Event:PutSLast, LineAddress, tbe);
+                    } else {
+                        trigger(Event:PutSNotLast, LineAddress, tbe);
+                    }
+            //trigger(Event:PutS_respto, LineAddress, tbe);
+          } else if (in_msg.Type == CoherenceMessageType:Upgrade) {
+            trigger(Event:GetM_respto, LineAddress, tbe);
+          } else {
+            trigger(Event:Stall, LineAddress, tbe);
+          }
+        } else if (st == State:M) {      
+          if (in_msg.Type == CoherenceMessageType:GetM) {
+            trigger(Event:GetM_respto, LineAddress, tbe);
+          } else if (in_msg.Type == CoherenceMessageType:GetS) {
+            trigger(Event:GetS_respto, LineAddress, tbe);
+          } else if (in_msg.Type == CoherenceMessageType:PutM) {
+            trigger(Event:PutM_respto, LineAddress, tbe);
+          } else if (in_msg.Type == CoherenceMessageType:PutS) {
+                    if (entry.cacheL1L1.count() == 1) {
+                        assert(entry.cacheL1L1.isElement(in_msg.Sender));
+                        trigger(Event:PutSLast, LineAddress, tbe);
+                    } else {
+                        trigger(Event:PutSNotLast, LineAddress, tbe);
+                    }
+          } else if (in_msg.Type == CoherenceMessageType:Upgrade) {
+            trigger(Event:GetM_respto, LineAddress, tbe);
+          } else {
+            trigger(Event:Stall, LineAddress, tbe);
+          }
+        } else if (st == State:M_GetS) {      
+          if (in_msg.Type == CoherenceMessageType:WB) {
+            trigger(Event:WB_respto, LineAddress, tbe);
+          } else {
+            trigger(Event:Stall, LineAddress, tbe);
+          }
+        } else if (st == State:S) {      
+          if (in_msg.Type == CoherenceMessageType:GetM) {
+            trigger(Event:GetM_respto, LineAddress, tbe);
+          } else if (in_msg.Type == CoherenceMessageType:GetS) {
+            trigger(Event:GetS_respto, LineAddress, tbe);
+          } else if (in_msg.Type == CoherenceMessageType:PutM) {
+            trigger(Event:PutM_respto, LineAddress, tbe);
+          } else if (in_msg.Type == CoherenceMessageType:PutS) {
+            //trigger(Event:PutS_respto, LineAddress, tbe);
+                    if (entry.cacheL1L1.count() == 1) {
+                        assert(entry.cacheL1L1.isElement(in_msg.Sender));
+                        trigger(Event:PutSLast, LineAddress, tbe);
+                    } else {
+                        trigger(Event:PutSNotLast, LineAddress, tbe);
+                    }
+          } else if (in_msg.Type == CoherenceMessageType:Upgrade) {
+            trigger(Event:GetM_respto, LineAddress, tbe);
+          } else {
+            trigger(Event:Stall, LineAddress, tbe);
+          }
+        } else {
+          trigger(Event:Stall, LineAddress, tbe);
+        }
+      }
+    }
+  }
+  in_port(reqto_in, CoherenceMessage, reqTo) {
+    if (reqto_in.isReady(clockEdge())) {
+      peek (reqto_in, CoherenceMessage) {
+        Addr LineAddress := in_msg.LineAddress;
+        Entry entry := getDirectoryEntry(in_msg.LineAddress);
+        TBE tbe := TBEs[in_msg.LineAddress];
+        State st := getState(tbe, in_msg.LineAddress);
+        ////DPRINTF(RubySlicc, "Dir at address 0x%x received message %d in state %d, net=reqto_in\n", LineAddress, in_msg.Type, st);
+        if (st == State:I) {
+          if (in_msg.Type == CoherenceMessageType:GetM) {
+            trigger(Event:GetM_reqto, LineAddress, tbe);
+          } else if (in_msg.Type == CoherenceMessageType:GetS) {
+            trigger(Event:GetS_reqto, LineAddress, tbe);
+          } else if (in_msg.Type == CoherenceMessageType:PutM) {
+            //trigger(Event:PutM_reqto, LineAddress, tbe);
+            if (entry.ownerL1.isElement(in_msg.Sender))  {
+                trigger(Event:PutMOwner, LineAddress, tbe);
+            } else {
+                trigger(Event:PutMNonOwner, LineAddress, tbe);
+            }
+          } else if (in_msg.Type == CoherenceMessageType:PutS) {
+            //trigger(Event:PutS_reqto, LineAddress, tbe);
+                    if (entry.cacheL1L1.count() == 1) {
+                        assert(entry.cacheL1L1.isElement(in_msg.Sender));
+                        trigger(Event:PutSLast, LineAddress, tbe);
+                    } else {
+                        trigger(Event:PutSNotLast, LineAddress, tbe);
+                    }
+          } else if (in_msg.Type == CoherenceMessageType:Upgrade) {
+            trigger(Event:GetM, LineAddress, tbe);
+          } else {
+            trigger(Event:Stall, LineAddress, tbe);
+          }
+        } else if (st == State:M) {      
+          if (in_msg.Type == CoherenceMessageType:GetM) {
+            trigger(Event:GetM_reqto, LineAddress, tbe);
+          } else if (in_msg.Type == CoherenceMessageType:GetS) {
+            trigger(Event:GetS_reqto, LineAddress, tbe);
+          } else if (in_msg.Type == CoherenceMessageType:PutM) {
+            //trigger(Event:PutM_reqto, LineAddress, tbe);
+            if (entry.ownerL1.isElement(in_msg.Sender))  {
+                trigger(Event:PutMOwner, LineAddress, tbe);
+            } else {
+                trigger(Event:PutMNonOwner, LineAddress, tbe);
+            }
+          } else if (in_msg.Type == CoherenceMessageType:PutS) {
+            //trigger(Event:PutS_reqto, LineAddress, tbe);
+                    if (entry.cacheL1L1.count() == 1) {
+                        assert(entry.cacheL1L1.isElement(in_msg.Sender));
+                        trigger(Event:PutSLast, LineAddress, tbe);
+                    } else {
+                        trigger(Event:PutSNotLast, LineAddress, tbe);
+                    }
+          } else if (in_msg.Type == CoherenceMessageType:Upgrade) {
+            trigger(Event:GetM, LineAddress, tbe);
+          } else {
+            trigger(Event:Stall, LineAddress, tbe);
+          }
+        } else if (st == State:M_GetS) {      
+          if (in_msg.Type == CoherenceMessageType:WB) {
+            trigger(Event:WB_reqto, LineAddress, tbe);
+          } else {
+            trigger(Event:Stall, LineAddress, tbe);
+          }
+        } else if (st == State:S) {      
+          if (in_msg.Type == CoherenceMessageType:GetM) {
+            trigger(Event:GetM_reqto, LineAddress, tbe);
+          } else if (in_msg.Type == CoherenceMessageType:GetS) {
+            trigger(Event:GetS_reqto, LineAddress, tbe);
+          } else if (in_msg.Type == CoherenceMessageType:PutM) {
+            //trigger(Event:PutM_reqto, LineAddress, tbe);
+            if (entry.ownerL1.isElement(in_msg.Sender))  {
+                trigger(Event:PutMOwner, LineAddress, tbe);
+            } else {
+                trigger(Event:PutMNonOwner, LineAddress, tbe);
+            }
+          } else if (in_msg.Type == CoherenceMessageType:PutS) {
+            //trigger(Event:PutS_reqto, LineAddress, tbe);
+                    if (entry.cacheL1L1.count() == 1) {
+                        assert(entry.cacheL1L1.isElement(in_msg.Sender));
+                        trigger(Event:PutSLast, LineAddress, tbe);
+                    } else {
+                        trigger(Event:PutSNotLast, LineAddress, tbe);
+                    }
+          } else if (in_msg.Type == CoherenceMessageType:Upgrade) {
+            trigger(Event:GetM, LineAddress, tbe);
+          } else {
+            trigger(Event:Stall, LineAddress, tbe);
+          }
+        } else {
+          trigger(Event:Stall, LineAddress, tbe);
+        }
+      }
+    }
+  }
+
+  action(stall, "\z", desc="...") {
+      // z_stall
+  }
+
+  action(queueBranch_respto, "qB_respfrom", desc="...") {
+    peek(respto_in, CoherenceMessage) {
+    enqueue(conditionQueue_out, CondMsg) {
+      out_msg.LineAddress := address;
+      out_msg.Net := 1;
+      out_msg.OriginalSender := in_msg.Sender;
+    }
+    }
+  }
+  action(queueBranch_reqto, "qB_reqfrom", desc="...") {
+    peek(reqto_in, CoherenceMessage) {
+    enqueue(conditionQueue_out, CondMsg) {
+      out_msg.LineAddress := address;
+      out_msg.Net := 0;
+      out_msg.OriginalSender := in_msg.Sender;
+    }
+    }
+  }
+  action(a_ReadMem, "mR", desc="Please work") {
+    peek(reqto_in, CoherenceMessage) {
+      enqueue(memQueue_out, MemoryMsg, toMemLatency) {
+        out_msg.addr := address;
+        out_msg.Type := MemoryRequestType:MEMORY_READ;
+        out_msg.Sender := in_msg.Sender;
+        out_msg.MessageSize := MessageSizeType:Request_Control;
+        out_msg.Len := 0;
+      }
+    }
+  }
+  
+  action(a_popreqto, "p", desc="Pop reqto_in") {
+    reqto_in.dequeue(clockEdge());
+  }
+  action(a_poprespto, "pResp", desc="Pop respto_in") {
+    respto_in.dequeue(clockEdge());
+  }
+
+  action(a_popmemq, "pMQ", desc="Pop memqueue") {
+    memQueue_in.dequeue(clockEdge());
+  }
+  action(a_popcondq, "pcQ_in0", desc="Pop the condition queue.") {
+      // Sometimes we need to be able to pop a queue/in_port from within a transition
+      // rather than from within the in_port itself. Thus, we need an action for this,
+      // since transitions cannot execute non-action functions.
+      conditionQueue_in.dequeue(clockEdge());
+  }
+
+  action(a_I_GetM__M_Memory_Read_M, "aIGMMMRM", desc="...") {
+    peek(memQueue_in, MemoryMsg) {
+      Entry entry := getDirectoryEntry(address);
+      enqueue(respfrom_out, CoherenceMessage, responseLatency) {
+        out_msg.LineAddress := address;
+        out_msg.MessageSize := MessageSizeType:Data;
+        out_msg.Destination.add(in_msg.OriginalRequestorMachId);
+        out_msg.Type := CoherenceMessageType:GetM_Ack_AD;
+        out_msg.Sender := machineID;
+        out_msg.cl := in_msg.DataBlk;
+        out_msg.acksExpected := entry.cacheL1L1.count();
+      }
+      entry.ownerL1.clear();
+      entry.ownerL1.add(in_msg.OriginalRequestorMachId);
+    }
+  }
+  action(a_I_GetS__S_Memory_Read_S, "aIGSSMRS", desc="...") {
+    peek(memQueue_in, MemoryMsg) {
+          getDirectoryEntry(address).cacheL1L1.add(in_msg.OriginalRequestorMachId);
+          enqueue(respfrom_out, CoherenceMessage, responseLatency) {
+            out_msg.LineAddress := address;
+            out_msg.MessageSize := MessageSizeType:Data;
+            out_msg.Destination.add(in_msg.OriginalRequestorMachId);
+            out_msg.Type := CoherenceMessageType:GetS_Ack;
+            out_msg.Sender := machineID;
+            out_msg.cl := in_msg.DataBlk;
+          }
+    }
+  }
+  action(a_I_Upgrade__M_Memory_Read_M, "AIUMMRM", desc="...") {
+    peek(memQueue_in, MemoryMsg) {
+      getDirectoryEntry(address).ownerL1.clear();
+      getDirectoryEntry(address).ownerL1.add(in_msg.OriginalRequestorMachId);
+          enqueue(respfrom_out, CoherenceMessage, responseLatency) {
+            out_msg.LineAddress := address;
+            out_msg.MessageSize := MessageSizeType:Data;
+            out_msg.Destination.add(in_msg.OriginalRequestorMachId);
+            out_msg.Type := CoherenceMessageType:GetM_Ack_D;
+            out_msg.Sender := machineID;
+            out_msg.cl := in_msg.DataBlk;
+            out_msg.acksExpected := 0;
+          }
+      }
+    getDirectoryEntry(address).cacheL1L1.clear();
+  }
+  action(a_S_GetM, "aSGM", desc="...") {
+    peek(memQueue_in, MemoryMsg) {
+            enqueue(respfrom_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := address;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.OriginalRequestorMachId);
+              out_msg.Type := CoherenceMessageType:GetM_Ack_AD;
+              out_msg.Sender := machineID;
+              out_msg.cl := in_msg.DataBlk;
+              out_msg.acksExpected := getDirectoryEntry(address).cacheL1L1.count();
+            }
+            enqueue(fwdfrom_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := address;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination := getDirectoryEntry(address).cacheL1L1;
+              out_msg.Type := CoherenceMessageType:Inv;
+              out_msg.Sender := in_msg.OriginalRequestorMachId;
+            }
+      getDirectoryEntry(address).ownerL1.clear();
+      getDirectoryEntry(address).ownerL1.add(in_msg.OriginalRequestorMachId);
+            getDirectoryEntry(address).cacheL1L1.clear();
+    }
+  }
+  action(a_remOGReq, "arOGR", desc="...") {
+    peek(memQueue_in, MemoryMsg) {
+          getDirectoryEntry(address).cacheL1L1.remove(in_msg.OriginalRequestorMachId);
+    }
+  }
+  action(a_S_GetS__S_Memory_Read_S, "aSGSSMRS", desc="...") {
+    peek(memQueue_in, MemoryMsg) {
+            enqueue(respfrom_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := address;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.OriginalRequestorMachId);
+              out_msg.Type := CoherenceMessageType:GetS_Ack;
+              out_msg.Sender := machineID;
+              out_msg.cl := in_msg.DataBlk;
+            }
+      getDirectoryEntry(address).cacheL1L1.add(in_msg.OriginalRequestorMachId);
+    }
+  }
+
+  action(a_I_PutM_I_PutM_branch_respto, "aIPMIPMb_respto", desc="...") {
+    peek(respto_in, CoherenceMessage) {
+      Entry entry := getDirectoryEntry(address);
+            enqueue(fwdfrom_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := address;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:Put_Ack;
+              out_msg.Sender := machineID;
+            }
+            entry.cacheL1L1.remove(in_msg.Sender);
+    }
+  }
+  action(a_I_PutS_I_respto, "aIPSI_respto", desc="...") {
+    peek(respto_in, CoherenceMessage) {
+      Entry entry := getDirectoryEntry(address);
+            enqueue(fwdfrom_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := address;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:Put_Ack;
+              out_msg.Sender := machineID;
+            }
+            entry.cacheL1L1.remove(in_msg.Sender);
+    }
+  }
+  action(a_M_GetM_M_respto, "aMGMM_respto", desc="...") {
+    peek(respto_in, CoherenceMessage) {
+      Entry entry := getDirectoryEntry(address);
+            enqueue(fwdfrom_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := address;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination := entry.ownerL1;
+              out_msg.Type := CoherenceMessageType:Fwd_GetM;
+              out_msg.Sender := in_msg.Sender;
+            }
+            entry.ownerL1.clear();
+            entry.ownerL1.add(in_msg.Sender);
+    }
+  }
+  action(a_M_GetS_M_GetS_respto, "aMGSMGS_respto", desc="...") {
+    peek(respto_in, CoherenceMessage) {
+      Entry entry := getDirectoryEntry(address);
+            enqueue(fwdfrom_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := address;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination := entry.ownerL1;
+              out_msg.Type := CoherenceMessageType:Fwd_GetS;
+              out_msg.Sender := in_msg.Sender;
+            }
+            entry.cacheL1L1.add(in_msg.Sender);
+            entry.cacheL1L1.addNetDest(entry.ownerL1);
+    }
+  }
+  action(a_S_PutS_S_PutS_branch_respto, "aSPSSPSb_respto", desc="...") {
+    peek(respto_in, CoherenceMessage) {
+      Entry entry := getDirectoryEntry(address);
+            enqueue(fwdfrom_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := address;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:Put_Ack;
+              out_msg.Sender := machineID;
+            }
+            entry.cacheL1L1.remove(in_msg.Sender);
+    }
+  }
+
+  action(a_sendMemRead_respto, "asMR_respto", desc="...") {
+    peek(respto_in, CoherenceMessage) {
+      enqueue(memQueue_out, MemoryMsg, toMemLatency) {
+        out_msg.addr := address;
+        out_msg.Type := MemoryRequestType:MEMORY_READ;
+        out_msg.Sender := in_msg.Sender;
+        out_msg.MessageSize := MessageSizeType:Request_Control;
+        out_msg.Len := 0;
+      }
+    }
+  }
+
+  action(a_sendMemWrite_respto, "asMW_respto", desc="...") {
+    peek(respto_in, CoherenceMessage) {
+      queueMemoryWrite(in_msg.Sender, address, toMemLatency,
+                             in_msg.cl)
+    }
+  }
+  action(a_I_PutM_I_PutM_branch_reqto, "aIPMIPMb_reqto", desc="...") {
+    peek(reqto_in, CoherenceMessage) {
+            enqueue(fwdfrom_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := address;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:Put_Ack;
+              out_msg.Sender := machineID;
+            }
+            getDirectoryEntry(address).cacheL1L1.remove(in_msg.Sender);
+    }
+  }
+  action(a_I_PutS_I_reqto, "aIPSI_reqto", desc="...") {
+    peek(reqto_in, CoherenceMessage) {
+            enqueue(fwdfrom_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := address;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:Put_Ack;
+              out_msg.Sender := machineID;
+            }
+        getDirectoryEntry(address).cacheL1L1.remove(in_msg.Sender);
+    }
+  }
+  action(a_M_GetM_M_reqto, "aMGMM_reqto", desc="...") {
+    peek(reqto_in, CoherenceMessage) {
+        enqueue(fwdfrom_out, CoherenceMessage, responseLatency) {
+          out_msg.LineAddress := address;
+          out_msg.MessageSize := MessageSizeType:Control;
+          out_msg.Destination := getDirectoryEntry(address).ownerL1;
+          out_msg.Type := CoherenceMessageType:Fwd_GetM;
+          out_msg.Sender := in_msg.Sender;
+        }
+        getDirectoryEntry(address).ownerL1.clear();
+        getDirectoryEntry(address).ownerL1.add(in_msg.Sender);
+    }
+  }
+  action(a_M_GetS_M_GetS_reqto, "aMGSMGS_reqto", desc="...") {
+    peek(reqto_in, CoherenceMessage) {
+        enqueue(fwdfrom_out, CoherenceMessage, responseLatency) {
+          out_msg.LineAddress := address;
+          out_msg.MessageSize := MessageSizeType:Control;
+          out_msg.Destination := getDirectoryEntry(address).ownerL1;
+          out_msg.Type := CoherenceMessageType:Fwd_GetS;
+          out_msg.Sender := in_msg.Sender;
+        }
+        getDirectoryEntry(address).cacheL1L1.add(in_msg.Sender);
+        getDirectoryEntry(address).cacheL1L1.addNetDest(getDirectoryEntry(address).ownerL1);
+    }
+  }
+  action(a_S_PutS_S_PutS_branch_reqto, "aSPSSPSb_reqto", desc="...") {
+    peek(reqto_in, CoherenceMessage) {
+            enqueue(fwdfrom_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := address;
+              out_msg.MessageSize := MessageSizeType:Control;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:Put_Ack;
+              out_msg.Sender := machineID;
+            }
+            getDirectoryEntry(address).cacheL1L1.remove(in_msg.Sender);
+    }
+  }
+
+  action(a_sendMemRead_reqto, "asMR_reqto", desc="...") {
+    peek(reqto_in, CoherenceMessage) {
+      enqueue(memQueue_out, MemoryMsg, toMemLatency) {
+        out_msg.addr := address;
+        out_msg.Type := MemoryRequestType:MEMORY_READ;
+        out_msg.Sender := in_msg.Sender;
+        out_msg.MessageSize := MessageSizeType:Request_Control;
+        out_msg.Len := 0;
+      }
+    }
+  }
+
+  action(a_sendMemWrite_reqto, "asMW_reqto", desc="...") {
+    peek(reqto_in, CoherenceMessage) {
+      enqueue(memQueue_out, MemoryMsg, toMemLatency) {
+        out_msg.DataBlk := in_msg.cl;
+        out_msg.addr := address;
+        out_msg.Type := MemoryRequestType:MEMORY_WB;
+        out_msg.Sender := in_msg.Sender;
+        out_msg.MessageSize := MessageSizeType:Writeback_Data;
+        out_msg.Len := 0;
+      }
+    }
+  }
+  action(sendPutAck, "a", desc="Send the put ack") {
+      peek(reqto_in, CoherenceMessage) {
+          enqueue(fwdfrom_out, CoherenceMessage, 1) {
+              out_msg.LineAddress := address;
+              out_msg.Type := CoherenceMessageType:Put_Ack;
+              out_msg.Sender := machineID;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.MessageSize := MessageSizeType:Control;
+          }
+      }
+  }
+  action(removeReqFromSharers, "rS", desc="Remove requestor from sharers") {
+      peek(reqto_in, CoherenceMessage) {
+          getDirectoryEntry(address).cacheL1L1.remove(in_msg.Sender);
+      }
+  }
+
+  action(clearOwner, "cO", desc="...") {
+    getDirectoryEntry(address).ownerL1.clear();
+  }
+
+  action(sendDataToMem, "w", desc="Write data to memory") {
+      peek(reqto_in, CoherenceMessage) {
+          //DPRINTF(RubySlicc, "Writing memory for %#x\n", address);
+          //DPRINTF(RubySlicc, "Writing %s\n", in_msg.cl);
+          enqueue(memQueue_out, MemoryMsg, toMemLatency) {
+              out_msg.addr := address;
+              out_msg.Type := MemoryRequestType:MEMORY_WB;
+              out_msg.Sender := in_msg.Sender;
+              out_msg.MessageSize := MessageSizeType:Writeback_Data;
+              out_msg.DataBlk := in_msg.cl;
+              out_msg.Len := 0;
+          }
+      }
+  }
+  action(sendGetSAckToReq, "dS", desc="Send GetS_Ack with data from memory to requestor. ") {
+      peek(memQueue_in, MemoryMsg) {
+          enqueue(respfrom_out, CoherenceMessage, 1) {
+              out_msg.LineAddress := address;
+              out_msg.Type := CoherenceMessageType:GetS_Ack;
+              out_msg.Sender := machineID;
+              out_msg.Destination.add(in_msg.OriginalRequestorMachId);
+              out_msg.cl := in_msg.DataBlk;
+              out_msg.MessageSize := MessageSizeType:Data;
+          }
+      }
+  }
+  action(addReqToSharers, "aS", desc="Add requestor to sharer list") {
+      peek(reqto_in, CoherenceMessage) {
+          getDirectoryEntry(address).cacheL1L1.add(in_msg.Sender);
+      }
+  }
+  action(sendMemRead, "r", desc="Send a memory read request") {
+      peek(reqto_in, CoherenceMessage) {
+          // Send request through special memory request queue. At some
+          // point the response will be on the memory response queue.
+          // Like enqueue, this takes a latency for the request.
+          enqueue(memQueue_out, MemoryMsg, toMemLatency) {
+              out_msg.addr := address;
+              out_msg.Type := MemoryRequestType:MEMORY_READ;
+              out_msg.Sender := in_msg.Sender;
+              out_msg.MessageSize := MessageSizeType:Request_Control;
+              out_msg.Len := 0;
+          }
+      }
+  }
+  action(setOwner, "sO", desc="Set the owner") {
+      peek(reqto_in, CoherenceMessage) {
+          getDirectoryEntry(address).ownerL1.add(in_msg.Sender);
+      }
+      assert(getDirectoryEntry(address).ownerL1.count() == 1);
+  }
+  action(setOwnerToOG, "sOG", desc="Set the owner") {
+      peek(memQueue_in,  MemoryMsg) {
+          getDirectoryEntry(address).ownerL1.add(in_msg.OriginalRequestorMachId);
+      }
+      assert(getDirectoryEntry(address).ownerL1.count() == 1);
+  }
+  action(sendFwdGetM, "fM", desc="Send forward getM to owner") {
+      assert(getDirectoryEntry(address).ownerL1.count() == 1);
+      peek(reqto_in, CoherenceMessage) {
+          enqueue(fwdfrom_out, CoherenceMessage, 1) {
+              out_msg.LineAddress := address;
+              out_msg.Type := CoherenceMessageType:Fwd_GetM;
+              out_msg.Sender := in_msg.Sender;
+              out_msg.Destination := getDirectoryEntry(address).ownerL1;
+              out_msg.MessageSize := MessageSizeType:Control;
+          }
+      }
+  }
+  action(sendDataToReq, "d", desc="Send data from memory to requestor. ") {
+      peek(memQueue_in, MemoryMsg) {
+          enqueue(respfrom_out, CoherenceMessage, 1) {
+              out_msg.LineAddress := address;
+              out_msg.Type := CoherenceMessageType:GetM_Ack_AD;
+              out_msg.Sender := machineID;
+              out_msg.Destination.add(in_msg.OriginalRequestorMachId);
+              out_msg.cl := in_msg.DataBlk;
+              out_msg.MessageSize := MessageSizeType:Data;
+              Entry e := getDirectoryEntry(address);
+              // Only need to include acks if we are the owner.
+              out_msg.acksExpected := e.cacheL1L1.count();
+              //if (e.ownerL1.isElement(in_msg.OriginalRequestorMachId)) {
+              //    out_msg.acksExpected := e.cacheL1L1.count();
+              //} else {
+              //    out_msg.acksExpected := 0;
+              //}
+              DPRINTF(RubySlicc, "acksExpected := %d\n", out_msg.acksExpected);
+              assert(out_msg.acksExpected >= 0);
+          }
+      }
+  }
+  action(clearSharers, "cS", desc="Clear the sharer list") {
+      getDirectoryEntry(address).cacheL1L1.clear();
+  }
+  action(sendInvToSharers, "i", desc="Send invalidate to all sharers") {
+      assert(is_valid(tbe));
+      //peek(reqto_in, CoherenceMessage) {
+      peek(memQueue_in, MemoryMsg) {
+          enqueue(fwdfrom_out, CoherenceMessage, 1) {
+              out_msg.LineAddress := address;
+              out_msg.Type := CoherenceMessageType:Inv;
+              out_msg.Sender := tbe.Sender;
+              //out_msg.Sender := in_msg.Sender;
+              out_msg.Sender := in_msg.OriginalRequestorMachId;
+              out_msg.Destination := getDirectoryEntry(address).cacheL1L1;
+              out_msg.MessageSize := MessageSizeType:Control;
+          DPRINTF(RubySlicc, "Number of invalidations sent := %d\n", getDirectoryEntry(address).cacheL1L1.count());
+          }
+      }
+  }
+  action(sendFwdGetS, "fS", desc="Send forward getS to owner") {
+      assert(getDirectoryEntry(address).ownerL1.count() == 1);
+      peek(reqto_in, CoherenceMessage) {
+          enqueue(fwdfrom_out, CoherenceMessage, 1) {
+              out_msg.LineAddress := address;
+              out_msg.Type := CoherenceMessageType:Fwd_GetS;
+              out_msg.Sender := in_msg.Sender;
+              out_msg.Destination := getDirectoryEntry(address).ownerL1;
+              out_msg.MessageSize := MessageSizeType:Control;
+          }
+      }
+  }
+  action(addOwnerToSharers, "oS", desc="Add the owner to sharers") {
+      Entry e := getDirectoryEntry(address);
+      assert(e.ownerL1.count() == 1);
+      e.cacheL1L1.addNetDest(e.ownerL1);
+  }
+  action(sendRespDataToMem, "rw", desc="Write data to memory from resp") {
+      peek(respto_in, CoherenceMessage) {
+          //DPRINTF(RubySlicc, "Writing memory for %#x\n", address);
+          //DPRINTF(RubySlicc, "Writing %s\n", in_msg.cl);
+          enqueue(memQueue_out, MemoryMsg, toMemLatency) {
+              out_msg.addr := address;
+              out_msg.Type := MemoryRequestType:MEMORY_WB;
+              out_msg.Sender := in_msg.Sender;
+              out_msg.MessageSize := MessageSizeType:Writeback_Data;
+              out_msg.DataBlk := in_msg.cl;
+              out_msg.Len := 0;
+          }
+      }
+  }
+
+  action(printReq, "pr", desc="...") {
+    peek(reqto_in, CoherenceMessage) {
+        DPRINTF(RubySlicc, "printReq: %d\n", in_msg.Sender);
+    }
+  }
+
+  action(printOG, "pOG", desc="...") {
+    peek(memQueue_in, MemoryMsg) {
+        DPRINTF(RubySlicc, "printOG: %d\n", in_msg.OriginalRequestorMachId);
+    }
+  }
+
+  action(allocTBE, "aTBE", desc="...") {
+    assert(is_invalid(tbe));
+    check_allocate(TBEs);
+    TBEs.allocate(address);
+    set_tbe(TBEs[address]);
+    peek(reqto_in, CoherenceMessage) {
+        tbe.Sender  := in_msg.Sender;
+    }
+  }
+  action(deallocTBE, "s", desc="Deallocate external TBE") {
+    assert(is_valid(tbe));
+    TBEs.deallocate(address);
+    unset_tbe();
+  }
+     
+        
+
+  // PROPER WAY
+
+  // Step-by-step replacing transitions with those of the working alternative-dir.sm
+  transition(M, GetS, S_D) {
+      sendFwdGetS;
+      addReqToSharers;
+      addOwnerToSharers;
+      clearOwner;
+      a_popreqto;
+  }
+  transition(S_D, WB, SS_m) {
+      sendRespDataToMem;
+      a_poprespto;
+  }
+  transition(SS_m, Memory_Write, S) {
+      a_popmemq;
+  }
+  transition(I, GetM, M_m) {
+      sendMemRead;
+      setOwner;
+      a_popreqto;
+  }
+  transition(M_m, Memory_Read, M) {
+      sendDataToReq;
+      clearSharers; // NOTE: This isn't *required* in some cases.
+      a_popmemq;
+  }
+  transition(S, GetM, M_m) {
+      sendMemRead;
+      removeReqFromSharers;
+      sendInvToSharers;
+      setOwner;
+      a_popreqto;
+  }
+  transition(M, GetM) {
+      sendFwdGetM;
+      clearOwner;
+      setOwner;
+      a_popreqto;
+  }
+  transition({I, S}, GetS, S_m) {
+      sendMemRead;
+      addReqToSharers;
+      a_popreqto;
+    }
+  transition(S_m, Memory_Read, S) {
+      sendGetSAckToReq;
+      a_popmemq;
+  }
+
+  transition(MI_m, Memory_Write, I) {
+      a_popmemq;
+  }
+  transition(M, PutMOwner, MI_m) {
+      sendDataToMem;
+      clearOwner;
+      sendPutAck;
+      a_popreqto;
+  }
+  transition({M, I}, PutMNonOwner) {
+      sendPutAck;
+      a_popreqto;
+  }
+
+  transition(I_GetS__S, Memory_Read, S) {
+    a_I_GetS__S_Memory_Read_S;
+    a_popmemq;
+  }
+  transition(I_PutM_COND_ownerPutMsrc_I, Memory_Write, I) {
+    clearOwner;
+    a_popmemq;
+  }
+  transition(M_PutM_COND_ownerPutMsrc_I, Memory_Write, I) {
+    clearOwner;
+    a_popmemq;
+  }
+
+  transition(M_GetS_WB_COND_WBsrcowner_S, Memory_Write, S) {
+    clearOwner;
+    a_popmemq;
+  }
+
+  transition({I_Upgrade__M, I_GetM__M}, Memory_Read, M) {
+    a_I_Upgrade__M_Memory_Read_M;
+    a_popmemq;
+  }
+
+
+  transition(S_GetS__S, Memory_Read, S) {
+    a_S_GetS__S_Memory_Read_S;
+    a_popmemq;
+  }
+
+  transition(S_PutM_COND_ownerPutMsrc_S, Memory_Write, S) {
+    a_popmemq;
+  }
+
+
+  transition(M_GetS, WB_respto, M_GetS_WB_branch_respto) {
+    queueBranch_respto;
+  }
+
+  transition(M_GetS_WB_branch_respto, branchOutcome_1, M_GetS_WB_COND_WBsrcowner_S) {
+    a_sendMemWrite_respto;
+    clearOwner;
+    a_poprespto;
+    a_popcondq;
+  }
+  transition(M_GetS_WB_branch_respto, branchOutcome_2, M_GetS) {
+    a_poprespto;
+    a_popcondq;
+  }
+
+  transition(I, GetM_reqto, I_GetM__M) {
+    a_sendMemRead_reqto;
+    a_popreqto;
+  }
+  transition(I, GetS_reqto, I_GetS__S) {
+    a_sendMemRead_reqto;
+    a_popreqto;
+  }
+
+  transition(I, {PutSNotLast, PutSLast}) {
+      sendPutAck;
+      a_popreqto;
+  }
+
+  transition(I, PutM_reqto, I_PutM_branch_reqto) {
+    a_I_PutM_I_PutM_branch_reqto;
+    queueBranch_reqto;
+  }
+  
+  // TODO can this ever happen?
+  //transition(I_PutM_branch_reqto, branchOutcome_1, I_PutM_COND_ownerPutMsrc_I) {
+  //  a_sendMemWrite_reqto;
+  //  a_popreqto;
+  //  a_popcondq;
+  //}
+  transition(I_PutM_branch_reqto, branchOutcome_2, I) {
+    a_popreqto;
+    a_popcondq;
+  }
+  transition(M, PutM_reqto, M_PutM_branch_reqto) {
+    a_I_PutM_I_PutM_branch_reqto;
+    queueBranch_reqto;
+  }
+  
+  transition(M_PutM_branch_reqto, branchOutcome_1, M_PutM_COND_ownerPutMsrc_I) {
+    a_sendMemWrite_reqto;
+    clearOwner;
+    a_popreqto;
+    a_popcondq;
+  }
+  transition(M_PutM_branch_reqto, branchOutcome_2, M) {
+    a_popreqto;
+    a_popcondq;
+  }
+  transition(S, PutM_reqto, S_PutM_branch_reqto) {
+    a_I_PutM_I_PutM_branch_reqto;
+    queueBranch_reqto;
+  }
+  transition(S, {PutMNonOwner, PutSNotLast}) {
+      removeReqFromSharers;
+      sendPutAck;
+      a_popreqto;
+  }
+  transition(S, PutSLast, I) {
+      removeReqFromSharers;
+      sendPutAck;
+      a_popreqto;
+  }
+  transition(M, {PutSNotLast, PutSLast}) {
+      sendPutAck;
+      a_popreqto;
+  }
+  
+  // TODO can this ever happen?
+  //transition(S_PutM_branch_reqto, branchOutcome_1, S_PutM_COND_ownerPutMsrc_S) {
+  //  a_sendMemWrite_reqto;
+  //  a_popreqto;
+  //  a_popcondq;
+  //}
+  transition(S_PutM_branch_reqto, branchOutcome_2, S) {
+    a_popreqto;
+    a_popcondq;
+  }
+
+  transition(I, PutS_reqto, I) {
+    a_I_PutS_I_reqto;
+    a_popreqto;
+  }
+  transition(M, PutS_reqto, M) {
+    a_I_PutS_I_reqto;
+    a_popreqto;
+  }
+
+  transition(M, GetM_reqto, M) {
+    a_M_GetM_M_reqto;
+    a_popreqto;
+  }
+
+  transition(M, GetS_reqto, M_GetS) {
+    a_M_GetS_M_GetS_reqto;
+    a_popreqto;
+  }
+
+  transition(S, GetM_reqto, S_GetM_branch_reqto) {
+    queueBranch_reqto;
+  }
+  transition({S_GetM_NCOND_SETFUNC_cachecontainsUpgradesrc_M, S_Upgrade_NCOND_SETFUNC_cachecontainsUpgradesrc_M}, Memory_Read, M) {
+    //a_S_GetM;
+    //a_popmemq;
+      sendInvToSharers;
+      //setOwnerToOG;
+      printOG;
+      sendDataToReq;
+      clearSharers; // NOTE: This isn't *required* in some cases.
+      a_popmemq;
+      deallocTBE;
+      //a_popreqto;
+  }
+
+  transition({S_GetM_COND_SETFUNC_cachecontainsUpgradesrc_M, S_Upgrade_COND_SETFUNC_cachecontainsUpgradesrc_M}, Memory_Read, M) {
+    //a_remOGReq;
+    //a_S_GetM;
+    //a_popmemq;
+      //a_remOGReq;
+      sendInvToSharers;
+      //setOwnerToOG;
+      printOG;
+      sendDataToReq;
+      clearSharers; // NOTE: This isn't *required* in some cases.
+      a_popmemq;
+      deallocTBE;
+      //a_popreqto;
+  }
+  transition(S_GetM_branch_reqto, branchOutcome_1, S_GetM_COND_SETFUNC_cachecontainsUpgradesrc_M) {
+  //transition(S_GetM_branch_reqto, branchOutcome_1, M_m) {
+      //sendMemRead;
+    //a_sendMemRead_reqto;
+    allocTBE;
+    removeReqFromSharers;
+    sendMemRead;
+    setOwner;
+    //sendInvToSharers;
+    printReq;
+    a_popreqto;
+    a_popcondq;
+  }
+  transition(S_GetM_branch_reqto, branchOutcome_2, S_GetM_NCOND_SETFUNC_cachecontainsUpgradesrc_M) {
+  //transition(S_GetM_branch_reqto, branchOutcome_2, M_m) {
+      //sendMemRead;
+      ////removeReqFromSharers;
+      //sendInvToSharers;
+      //a_popreqto;
+    //a_sendMemRead_reqto;
+    allocTBE;
+    sendMemRead;
+    setOwner;
+    //sendInvToSharers;
+    printReq;
+    a_popreqto;
+    a_popcondq;
+  }
+
+  transition(S, GetS_reqto, S_GetS__S) {
+    a_sendMemRead_reqto;
+    a_popreqto;
+  }
+
+  transition(S, PutS_reqto, S_PutS_branch_reqto) {
+    a_S_PutS_S_PutS_branch_reqto;
+    queueBranch_reqto;
+  }
+  transition(S_PutS_branch_reqto, branchOutcome_1, I) {
+    a_popreqto;
+    a_popcondq;
+  }
+  transition(S_PutS_branch_reqto, branchOutcome_2, S) {
+    a_popreqto;
+    a_popcondq;
+  }
+    
+  transition({
+    M,
+    S,
+    M_GetS,
+    I,
+    I_GetM__M,
+    I_GetS__S,
+    I_PutM_COND_ownerPutMsrc_I,
+    I_Upgrade__M,
+    M_PutM_COND_ownerPutMsrc_I,
+    M_GetS_WB_COND_WBsrcowner_S,
+    S_GetM_COND_SETFUNC_cachecontainsUpgradesrc_M,
+    S_GetM_NCOND_SETFUNC_cachecontainsUpgradesrc_M,
+    S_GetS__S,
+    S_PutM_COND_ownerPutMsrc_S,
+    S_Upgrade_COND_SETFUNC_cachecontainsUpgradesrc_M,
+    S_Upgrade_NCOND_SETFUNC_cachecontainsUpgradesrc_M,
+    I_PutM_branch_respto,
+    M_PutM_branch_respto,
+    M_GetS_branch_respto,
+    M_GetS_WB_branch_respto,
+    S_GetM_branch_respto,
+    S_PutS_branch_respto,
+    S_PutM_branch_respto,
+    I_PutM_branch_fwdto,
+    M_PutM_branch_fwdto,
+    M_GetS_branch_fwdto,
+    M_GetS_WB_branch_fwdto,
+    S_GetM_branch_fwdto,
+    S_PutS_branch_fwdto,
+    S_PutM_branch_fwdto,
+    I_PutM_branch_reqto,
+    M_PutM_branch_reqto,
+    M_GetS_branch_reqto,
+    M_GetS_WB_branch_reqto,
+    S_GetM_branch_reqto,
+    S_PutS_branch_reqto,
+    MI_m,
+    S_m,
+    M_m,
+    S_D,
+    SS_m,
+    S_PutM_branch_reqto}, Stall) {
+      stall;
+    }
+
+
+}
+// EOF

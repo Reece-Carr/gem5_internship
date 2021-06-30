@@ -1,0 +1,7 @@
+Import('*')
+
+all_protocols.extend([
+'JASON_MSI_STANDARD_DMA_SEPARATE_NETWORKS',
+])
+
+protocol_dirs.append(str(Dir('.').abspath))

@@ -1,0 +1,7 @@
+Import('*')
+
+all_protocols.extend([
+'NEW_BACKEND_ORDERED_MSI',
+])
+
+protocol_dirs.append(str(Dir('.').abspath))

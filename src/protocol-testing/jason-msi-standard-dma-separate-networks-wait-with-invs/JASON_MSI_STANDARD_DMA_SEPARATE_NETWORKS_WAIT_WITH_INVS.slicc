@@ -1,0 +1,6 @@
+protocol "JASON_MSI_STANDARD_DMA_SEPARATE_NETWORKS_WAIT_WITH_INVS";
+include "RubySlicc_interfaces.slicc";
+include "msg.sm";
+include "cache.sm";
+include "dir.sm";
+include "dma.sm";

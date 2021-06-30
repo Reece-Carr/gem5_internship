@@ -1,0 +1,9 @@
+protocol "PUREMSI";
+include "RubySlicc_interfaces.slicc";
+include "PUREMSI-msg.sm";
+//include "PUREMSI-cache.sm";
+include "alternative-cache.sm";
+//include "alternative-dir.sm";
+include "PUREMSI-dir.sm";
+//include "PUREMSI-dma.sm";
+include "alternative-dma.sm";

@@ -1,0 +1,1213 @@
+//SLICC.ModularSLICC.cache.GenCacheHeader
+machine(MachineType:L1Cache, "Cache controller")
+: Sequencer *sequencer;
+  CacheMemory *cache;
+  bool send_evictions;
+
+  // The following latencies should be exposed as command-line parameters in a future update
+  Cycles responseLatency := 1;
+  Cycles recycleLatency := 10;
+
+  // Required networks
+  MessageBuffer *mandatoryQueue;
+
+  // Dynamic networks
+  MessageBuffer *respTo, network="To", virtual_network="0", vnet_type="resp";
+  MessageBuffer *respFrom, network="From", virtual_network="0", vnet_type="resp";
+  MessageBuffer *fwdTo, network="To", virtual_network="1", vnet_type="fwd";
+  MessageBuffer *fwdFrom, network="From", virtual_network="1", vnet_type="fwd";
+  MessageBuffer *reqTo, network="To", virtual_network="2", vnet_type="req";
+  MessageBuffer *reqFrom, network="From", virtual_network="2", vnet_type="req";
+
+{
+  //SLICC.ModularSLICC.cache.GenCacheStateDecl
+  state_declaration(State, desc="L1Cache states", default="L1Cache_State_I") {
+    I, AccessPermission:Invalid, desc="... TODO ...";
+    I_load, AccessPermission:Invalid, desc="... TODO ...";
+    I_store, AccessPermission:Invalid, desc="... TODO ...";
+    I_store_GetM_Ack_AD, AccessPermission:Invalid, desc="... TODO ...";
+    I_x_M_evict, AccessPermission:Invalid, desc="... TODO ...";
+    I_x_S_evict, AccessPermission:Invalid, desc="... TODO ...";
+    M, AccessPermission:Read_Write, desc="... TODO ...";
+    M_evict, AccessPermission:Invalid, desc="... TODO ...";
+    S, AccessPermission:Read_Only, desc="... TODO ...";
+    S_evict, AccessPermission:Invalid, desc="... TODO ...";
+    S_store, AccessPermission:Invalid, desc="... TODO ...";
+    S_store_GetM_Ack_AD, AccessPermission:Invalid, desc="... TODO ...";
+  }
+  
+  //SLICC.ModularSLICC.cache.GenCacheEvents
+  enumeration(Event, desc="Cache events") {
+    MloadMEvent, desc="M->M upon local load hit.";
+    SloadSEvent, desc="S->S upon local load hit.";
+    MstoreMEvent, desc="M->M upon local store hit.";
+    Stallmandatory_in, desc="Stall the mandatory_in port.";
+    
+    externalloadMfwdfrom_in, desc="Remote load hit ending in state M. Should pop fwdfrom_in.";
+    externalloadSfwdfrom_in, desc="Remote load hit ending in state S. Should pop fwdfrom_in.";
+    externalstoreMfwdfrom_in, desc="Remote store hit ending in state M. Should pop fwdfrom_in.";
+    deallocfwdfrom_in, desc="Event indicating the cache line + tbe should be deallocated following a message received on fwdfrom_in.";
+    deallocTBEfwdfrom_in, desc="Event indicating only the tbe should be deallocated following a message received on fwdfrom_in.";
+    Stallfwdfrom_in, desc="Stall the fwdfrom_in port.";
+    
+    externalloadMreqfrom_in, desc="Remote load hit ending in state M. Should pop reqfrom_in.";
+    externalloadSreqfrom_in, desc="Remote load hit ending in state S. Should pop reqfrom_in.";
+    externalstoreMreqfrom_in, desc="Remote store hit ending in state M. Should pop reqfrom_in.";
+    deallocreqfrom_in, desc="Event indicating the cache line + tbe should be deallocated following a message received on reqfrom_in.";
+    deallocTBEreqfrom_in, desc="Event indicating only the tbe should be deallocated following a message received on reqfrom_in.";
+    Stallreqfrom_in, desc="Stall the reqfrom_in port.";
+    
+    externalloadMrespfrom_in, desc="Remote load hit ending in state M. Should pop respfrom_in.";
+    externalloadSrespfrom_in, desc="Remote load hit ending in state S. Should pop respfrom_in.";
+    externalstoreMrespfrom_in, desc="Remote store hit ending in state M. Should pop respfrom_in.";
+    deallocrespfrom_in, desc="Event indicating the cache line + tbe should be deallocated following a message received on respfrom_in.";
+    deallocTBErespfrom_in, desc="Event indicating only the tbe should be deallocated following a message received on respfrom_in.";
+    Stallrespfrom_in, desc="Stall the respfrom_in port.";
+    
+    allocI_load, desc="Event indicating cache entry alloc before moving to I_load.";
+    allocI_store, desc="Event indicating cache entry alloc before moving to I_store.";
+    Progress, desc="Progress, please!";
+  }
+  
+  //SLICC.ModularSLICC.cache.GenCacheStruct
+  structure(Entry, desc="Stored variables of the Cache machine", interface="AbstractCacheEntry") {
+    State CacheState, desc="Cache state";
+  
+    DataBlock cl, desc="... TODO ...";
+  }
+  
+  //SLICC.ModularSLICC.cache.GenCacheTBE
+  structure(TBE, desc="TBE entries for L1Cache machine") {
+    State TBEState,       desc="Transient State";
+    int acksReceivedL1C1, default=0, desc="...TODO...";
+    int acksExpectedL1C1, default=0, desc="...TODO...";
+  }
+  
+  structure(TBETable, external="yes"){
+    TBE lookup(Addr);
+    void allocate(Addr);
+    void deallocate(Addr);
+    bool isPresent(Addr);
+  }
+  
+  TBETable TBEs, template="<L1Cache_TBE>", constructor="m_number_of_TBEs";
+  
+  void set_tbe(TBE b);
+  void unset_tbe();
+  
+  //SLICC.ModularSLICC.cache.GenCacheStaticFns
+  Tick clockEdge();
+  Tick cyclesToTicks(Cycles c);
+  Cycles ticksToCycles(Tick t);
+  void set_cache_entry(AbstractCacheEntry a);
+  void unset_cache_entry();
+  
+  MachineID mapAddressToMachine(Addr addr, MachineType mtype);
+  
+  Entry getEntry(Addr LineAddress), return_by_pointer="yes" {
+    return static_cast(Entry, "pointer", cache.lookup(LineAddress));
+  }
+  
+  TBE getTBE(Addr LineAddress, bool require_valid), return_by_pointer="yes" {
+    TBE tbe := TBEs[LineAddress];
+    if (is_invalid(tbe) && require_valid) {
+      // TODO does this work? Can we alloc TBEs outside of actions w/o breaking resource allocation?
+      TBEs.allocate(LineAddress);
+      tbe := TBEs[LineAddress];
+      assert(is_valid(tbe));
+    }
+    return tbe;
+  }
+  
+  State getState(TBE tbe, Entry cache_entry, Addr LineAddress) {
+    if (is_valid(tbe)) {
+      return tbe.TBEState;
+    } else if (is_valid(cache_entry)) {
+      return cache_entry.CacheState;
+    } else {
+      return State:I;
+    }
+  }
+  
+  void setState(TBE tbe, Entry cache_entry, Addr LineAddress, State state) {
+    if (is_valid(tbe)) {
+      tbe.TBEState := state;
+    }
+    if (is_valid(cache_entry)) {
+      cache_entry.CacheState := state;
+    }
+  }
+  
+  AccessPermission getAccessPermission(Addr LineAddress) {
+    TBE tbe := TBEs[LineAddress];
+    if (is_valid(tbe)) {
+      return L1Cache_State_to_permission(tbe.TBEState);
+    }
+    Entry cache_entry := getEntry(LineAddress);
+    if (is_valid(cache_entry)) {
+      return L1Cache_State_to_permission(cache_entry.CacheState);
+    } else {
+      return AccessPermission:NotPresent;
+    }
+  }
+  
+  void setAccessPermission(Entry cache_entry, Addr LineAddress, State state) {
+    if (is_valid(cache_entry)) {
+      cache_entry.changePermission(L1Cache_State_to_permission(state));
+    }
+  }
+  
+  void functionalRead(Addr addr, Packet *pkt) {
+    testAndRead(addr, getEntry(addr).cl, pkt);
+  }
+  
+  int functionalWrite(Addr addr, Packet *pkt) {
+    return 0 + testAndWrite(addr, getEntry(addr).cl, pkt);
+  }
+  
+  
+  //SLICC.ModularSLICC.cache.GenCacheOutPorts
+  out_port(fwdto_out, CoherenceMessage, fwdTo);
+  out_port(reqto_out, CoherenceMessage, reqTo);
+  out_port(respto_out, CoherenceMessage, respTo);
+  
+  //SLICC.ModularSLICC.cache.GenCacheInPorts
+  in_port(respfrom_in, CoherenceMessage, respFrom) {
+    if (respfrom_in.isReady(clockEdge())) {
+      peek (respfrom_in, CoherenceMessage, block_on="LineAddress") {
+        Addr LineAddress := in_msg.LineAddress;
+        State st := getState(TBEs[LineAddress], getEntry(LineAddress), LineAddress);
+        if (st == State:I) {
+          trigger(Event:Stallrespfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+        } else if (st == State:I_load) {      
+          if (in_msg.Type == CoherenceMessageType:GetS_AckL1C1) {
+            getEntry(LineAddress).cl := in_msg.cl;
+            setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:S);
+            trigger(Event:externalloadSrespfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          } else {
+            trigger(Event:Stallrespfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else if (st == State:I_store) {      
+          if (in_msg.Type == CoherenceMessageType:GetM_Ack_ADL1C1) {
+            getEntry(LineAddress).cl := in_msg.cl;
+            getTBE(LineAddress, true).acksExpectedL1C1 := in_msg.acksExpectedL1C1;
+            if (getTBE(LineAddress, true).acksExpectedL1C1 == getTBE(LineAddress, true).acksReceivedL1C1) {
+              setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:M);
+              trigger(Event:externalstoreMrespfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            }
+            else if (getTBE(LineAddress, true).acksExpectedL1C1 != getTBE(LineAddress, true).acksReceivedL1C1) {
+              setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:I_store_GetM_Ack_AD);
+              respfrom_in.dequeue(clockEdge());
+              trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            }  
+          } else if (in_msg.Type == CoherenceMessageType:GetM_Ack_DL1C1) {
+            getEntry(LineAddress).cl := in_msg.cl;
+            setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:M);
+            trigger(Event:externalstoreMrespfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));  
+          } else if (in_msg.Type == CoherenceMessageType:Inv_AckL1C1) {
+            getTBE(LineAddress, true).acksReceivedL1C1 := getTBE(LineAddress, true).acksReceivedL1C1+1;
+            setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:I_store);
+            respfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          } else {
+            trigger(Event:Stallrespfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else if (st == State:I_store_GetM_Ack_AD) {      
+          if (in_msg.Type == CoherenceMessageType:Inv_AckL1C1) {
+            getTBE(LineAddress, true).acksReceivedL1C1 := getTBE(LineAddress, true).acksReceivedL1C1+1;
+            if (getTBE(LineAddress, true).acksExpectedL1C1 == getTBE(LineAddress, true).acksReceivedL1C1) {
+              setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:M);
+              trigger(Event:externalstoreMrespfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            }
+            else if (getTBE(LineAddress, true).acksExpectedL1C1 != getTBE(LineAddress, true).acksReceivedL1C1) {
+              setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:I_store_GetM_Ack_AD);
+              respfrom_in.dequeue(clockEdge());
+              trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            }
+          } else {
+            trigger(Event:Stallrespfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else if (st == State:I_x_M_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Put_AckL1C1) {
+            setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocrespfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          } else {
+            trigger(Event:Stallrespfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else if (st == State:I_x_S_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Put_AckL1C1) {
+            setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocrespfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          } else {
+            trigger(Event:Stallrespfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else if (st == State:M) {      
+          if (in_msg.Type == CoherenceMessageType:Fwd_GetML1C1) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:GetM_Ack_DL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocrespfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));  
+          } else if (in_msg.Type == CoherenceMessageType:Fwd_GetSL1C1) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:GetS_AckL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:L2Cache));
+              out_msg.Type := CoherenceMessageType:WBL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:S);
+            respfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          } else {
+            trigger(Event:Stallrespfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else if (st == State:M_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Fwd_GetML1C1) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:GetM_Ack_DL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:I_x_M_evict);
+            respfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));  
+          } else if (in_msg.Type == CoherenceMessageType:Fwd_GetSL1C1) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:GetS_AckL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:L2Cache));
+              out_msg.Type := CoherenceMessageType:WBL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:S_evict);
+            respfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));  
+          } else if (in_msg.Type == CoherenceMessageType:Put_AckL1C1) {
+            setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocrespfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          } else {
+            trigger(Event:Stallrespfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else if (st == State:S) {      
+          if (in_msg.Type == CoherenceMessageType:InvL1C1) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:Inv_AckL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocrespfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          } else {
+            trigger(Event:Stallrespfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else if (st == State:S_evict) {      
+          if (in_msg.Type == CoherenceMessageType:InvL1C1) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:Inv_AckL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:I_x_S_evict);
+            respfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));  
+          } else if (in_msg.Type == CoherenceMessageType:Put_AckL1C1) {
+            setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocrespfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          } else {
+            trigger(Event:Stallrespfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else if (st == State:S_store) {      
+          if (in_msg.Type == CoherenceMessageType:GetM_Ack_ADL1C1) {
+            getTBE(LineAddress, true).acksExpectedL1C1 := in_msg.acksExpectedL1C1;
+            if (getTBE(LineAddress, true).acksExpectedL1C1 == getTBE(LineAddress, true).acksReceivedL1C1) {
+              setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:M);
+              trigger(Event:externalstoreMrespfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            }
+            else if (getTBE(LineAddress, true).acksExpectedL1C1 != getTBE(LineAddress, true).acksReceivedL1C1) {
+              setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:S_store_GetM_Ack_AD);
+              respfrom_in.dequeue(clockEdge());
+              trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            }  
+          } else if (in_msg.Type == CoherenceMessageType:GetM_Ack_DL1C1) {
+            setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:M);
+            trigger(Event:externalstoreMrespfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));  
+          } else if (in_msg.Type == CoherenceMessageType:InvL1C1) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:Inv_AckL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:I_store);
+            respfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));  
+          } else if (in_msg.Type == CoherenceMessageType:Inv_AckL1C1) {
+            getTBE(LineAddress, true).acksReceivedL1C1 := getTBE(LineAddress, true).acksReceivedL1C1+1;
+            setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:S_store);
+            respfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          } else {
+            trigger(Event:Stallrespfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else if (st == State:S_store_GetM_Ack_AD) {      
+          if (in_msg.Type == CoherenceMessageType:Inv_AckL1C1) {
+            getTBE(LineAddress, true).acksReceivedL1C1 := getTBE(LineAddress, true).acksReceivedL1C1+1;
+            if (getTBE(LineAddress, true).acksExpectedL1C1 == getTBE(LineAddress, true).acksReceivedL1C1) {
+              setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:M);
+              trigger(Event:externalstoreMrespfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            }
+            else if (getTBE(LineAddress, true).acksExpectedL1C1 != getTBE(LineAddress, true).acksReceivedL1C1) {
+              setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:S_store_GetM_Ack_AD);
+              respfrom_in.dequeue(clockEdge());
+              trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            }
+          } else {
+            trigger(Event:Stallrespfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else {
+          trigger(Event:Stallrespfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+        }
+      }
+    }
+  }
+  
+  in_port(fwdfrom_in, CoherenceMessage, fwdFrom) {
+    if (fwdfrom_in.isReady(clockEdge())) {
+      peek (fwdfrom_in, CoherenceMessage, block_on="LineAddress") {
+        Addr LineAddress := in_msg.LineAddress;
+        State st := getState(TBEs[LineAddress], getEntry(LineAddress), LineAddress);
+        if (st == State:I) {
+          trigger(Event:Stallfwdfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+        } else if (st == State:I_load) {      
+          if (in_msg.Type == CoherenceMessageType:GetS_AckL1C1) {
+            getEntry(LineAddress).cl := in_msg.cl;
+            setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:S);
+            trigger(Event:externalloadSfwdfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          } else {
+            trigger(Event:Stallfwdfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else if (st == State:I_store) {      
+          if (in_msg.Type == CoherenceMessageType:GetM_Ack_ADL1C1) {
+            getEntry(LineAddress).cl := in_msg.cl;
+            getTBE(LineAddress, true).acksExpectedL1C1 := in_msg.acksExpectedL1C1;
+            if (getTBE(LineAddress, true).acksExpectedL1C1 == getTBE(LineAddress, true).acksReceivedL1C1) {
+              setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:M);
+              trigger(Event:externalstoreMfwdfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            }
+            else if (getTBE(LineAddress, true).acksExpectedL1C1 != getTBE(LineAddress, true).acksReceivedL1C1) {
+              setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:I_store_GetM_Ack_AD);
+              fwdfrom_in.dequeue(clockEdge());
+              trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            }  
+          } else if (in_msg.Type == CoherenceMessageType:GetM_Ack_DL1C1) {
+            getEntry(LineAddress).cl := in_msg.cl;
+            setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:M);
+            trigger(Event:externalstoreMfwdfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));  
+          } else if (in_msg.Type == CoherenceMessageType:Inv_AckL1C1) {
+            getTBE(LineAddress, true).acksReceivedL1C1 := getTBE(LineAddress, true).acksReceivedL1C1+1;
+            setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:I_store);
+            fwdfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          } else {
+            trigger(Event:Stallfwdfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else if (st == State:I_store_GetM_Ack_AD) {      
+          if (in_msg.Type == CoherenceMessageType:Inv_AckL1C1) {
+            getTBE(LineAddress, true).acksReceivedL1C1 := getTBE(LineAddress, true).acksReceivedL1C1+1;
+            if (getTBE(LineAddress, true).acksExpectedL1C1 == getTBE(LineAddress, true).acksReceivedL1C1) {
+              setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:M);
+              trigger(Event:externalstoreMfwdfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            }
+            else if (getTBE(LineAddress, true).acksExpectedL1C1 != getTBE(LineAddress, true).acksReceivedL1C1) {
+              setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:I_store_GetM_Ack_AD);
+              fwdfrom_in.dequeue(clockEdge());
+              trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            }
+          } else {
+            trigger(Event:Stallfwdfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else if (st == State:I_x_M_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Put_AckL1C1) {
+            setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocfwdfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          } else {
+            trigger(Event:Stallfwdfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else if (st == State:I_x_S_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Put_AckL1C1) {
+            setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocfwdfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          } else {
+            trigger(Event:Stallfwdfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else if (st == State:M) {      
+          if (in_msg.Type == CoherenceMessageType:Fwd_GetML1C1) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:GetM_Ack_DL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocfwdfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));  
+          } else if (in_msg.Type == CoherenceMessageType:Fwd_GetSL1C1) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:GetS_AckL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:L2Cache));
+              out_msg.Type := CoherenceMessageType:WBL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:S);
+            fwdfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          } else {
+            trigger(Event:Stallfwdfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else if (st == State:M_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Fwd_GetML1C1) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:GetM_Ack_DL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:I_x_M_evict);
+            fwdfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));  
+          } else if (in_msg.Type == CoherenceMessageType:Fwd_GetSL1C1) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:GetS_AckL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:L2Cache));
+              out_msg.Type := CoherenceMessageType:WBL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:S_evict);
+            fwdfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));  
+          } else if (in_msg.Type == CoherenceMessageType:Put_AckL1C1) {
+            setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocfwdfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          } else {
+            trigger(Event:Stallfwdfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else if (st == State:S) {      
+          if (in_msg.Type == CoherenceMessageType:InvL1C1) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:Inv_AckL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocfwdfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          } else {
+            trigger(Event:Stallfwdfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else if (st == State:S_evict) {      
+          if (in_msg.Type == CoherenceMessageType:InvL1C1) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:Inv_AckL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:I_x_S_evict);
+            fwdfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));  
+          } else if (in_msg.Type == CoherenceMessageType:Put_AckL1C1) {
+            setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocfwdfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          } else {
+            trigger(Event:Stallfwdfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else if (st == State:S_store) {      
+          if (in_msg.Type == CoherenceMessageType:GetM_Ack_ADL1C1) {
+            getTBE(LineAddress, true).acksExpectedL1C1 := in_msg.acksExpectedL1C1;
+            if (getTBE(LineAddress, true).acksExpectedL1C1 == getTBE(LineAddress, true).acksReceivedL1C1) {
+              setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:M);
+              trigger(Event:externalstoreMfwdfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            }
+            else if (getTBE(LineAddress, true).acksExpectedL1C1 != getTBE(LineAddress, true).acksReceivedL1C1) {
+              setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:S_store_GetM_Ack_AD);
+              fwdfrom_in.dequeue(clockEdge());
+              trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            }  
+          } else if (in_msg.Type == CoherenceMessageType:GetM_Ack_DL1C1) {
+            setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:M);
+            trigger(Event:externalstoreMfwdfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));  
+          } else if (in_msg.Type == CoherenceMessageType:InvL1C1) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:Inv_AckL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:I_store);
+            fwdfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));  
+          } else if (in_msg.Type == CoherenceMessageType:Inv_AckL1C1) {
+            getTBE(LineAddress, true).acksReceivedL1C1 := getTBE(LineAddress, true).acksReceivedL1C1+1;
+            setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:S_store);
+            fwdfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          } else {
+            trigger(Event:Stallfwdfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else if (st == State:S_store_GetM_Ack_AD) {      
+          if (in_msg.Type == CoherenceMessageType:Inv_AckL1C1) {
+            getTBE(LineAddress, true).acksReceivedL1C1 := getTBE(LineAddress, true).acksReceivedL1C1+1;
+            if (getTBE(LineAddress, true).acksExpectedL1C1 == getTBE(LineAddress, true).acksReceivedL1C1) {
+              setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:M);
+              trigger(Event:externalstoreMfwdfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            }
+            else if (getTBE(LineAddress, true).acksExpectedL1C1 != getTBE(LineAddress, true).acksReceivedL1C1) {
+              setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:S_store_GetM_Ack_AD);
+              fwdfrom_in.dequeue(clockEdge());
+              trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            }
+          } else {
+            trigger(Event:Stallfwdfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else {
+          trigger(Event:Stallfwdfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+        }
+      }
+    }
+  }
+  
+  in_port(reqfrom_in, CoherenceMessage, reqFrom) {
+    if (reqfrom_in.isReady(clockEdge())) {
+      peek (reqfrom_in, CoherenceMessage, block_on="LineAddress") {
+        Addr LineAddress := in_msg.LineAddress;
+        State st := getState(TBEs[LineAddress], getEntry(LineAddress), LineAddress);
+        if (st == State:I) {
+          trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+        } else if (st == State:I_load) {      
+          if (in_msg.Type == CoherenceMessageType:GetS_AckL1C1) {
+            getEntry(LineAddress).cl := in_msg.cl;
+            setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:S);
+            trigger(Event:externalloadSreqfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          } else {
+            trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else if (st == State:I_store) {      
+          if (in_msg.Type == CoherenceMessageType:GetM_Ack_ADL1C1) {
+            getEntry(LineAddress).cl := in_msg.cl;
+            getTBE(LineAddress, true).acksExpectedL1C1 := in_msg.acksExpectedL1C1;
+            if (getTBE(LineAddress, true).acksExpectedL1C1 == getTBE(LineAddress, true).acksReceivedL1C1) {
+              setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:M);
+              trigger(Event:externalstoreMreqfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            }
+            else if (getTBE(LineAddress, true).acksExpectedL1C1 != getTBE(LineAddress, true).acksReceivedL1C1) {
+              setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:I_store_GetM_Ack_AD);
+              reqfrom_in.dequeue(clockEdge());
+              trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            }  
+          } else if (in_msg.Type == CoherenceMessageType:GetM_Ack_DL1C1) {
+            getEntry(LineAddress).cl := in_msg.cl;
+            setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:M);
+            trigger(Event:externalstoreMreqfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));  
+          } else if (in_msg.Type == CoherenceMessageType:Inv_AckL1C1) {
+            getTBE(LineAddress, true).acksReceivedL1C1 := getTBE(LineAddress, true).acksReceivedL1C1+1;
+            setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:I_store);
+            reqfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          } else {
+            trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else if (st == State:I_store_GetM_Ack_AD) {      
+          if (in_msg.Type == CoherenceMessageType:Inv_AckL1C1) {
+            getTBE(LineAddress, true).acksReceivedL1C1 := getTBE(LineAddress, true).acksReceivedL1C1+1;
+            if (getTBE(LineAddress, true).acksExpectedL1C1 == getTBE(LineAddress, true).acksReceivedL1C1) {
+              setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:M);
+              trigger(Event:externalstoreMreqfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            }
+            else if (getTBE(LineAddress, true).acksExpectedL1C1 != getTBE(LineAddress, true).acksReceivedL1C1) {
+              setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:I_store_GetM_Ack_AD);
+              reqfrom_in.dequeue(clockEdge());
+              trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            }
+          } else {
+            trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else if (st == State:I_x_M_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Put_AckL1C1) {
+            setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocreqfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          } else {
+            trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else if (st == State:I_x_S_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Put_AckL1C1) {
+            setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocreqfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          } else {
+            trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else if (st == State:M) {      
+          if (in_msg.Type == CoherenceMessageType:Fwd_GetML1C1) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:GetM_Ack_DL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocreqfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));  
+          } else if (in_msg.Type == CoherenceMessageType:Fwd_GetSL1C1) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:GetS_AckL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:L2Cache));
+              out_msg.Type := CoherenceMessageType:WBL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:S);
+            reqfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          } else {
+            trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else if (st == State:M_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Fwd_GetML1C1) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:GetM_Ack_DL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:I_x_M_evict);
+            reqfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));  
+          } else if (in_msg.Type == CoherenceMessageType:Fwd_GetSL1C1) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:GetS_AckL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:L2Cache));
+              out_msg.Type := CoherenceMessageType:WBL1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:S_evict);
+            reqfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));  
+          } else if (in_msg.Type == CoherenceMessageType:Put_AckL1C1) {
+            setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocreqfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          } else {
+            trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else if (st == State:S) {      
+          if (in_msg.Type == CoherenceMessageType:InvL1C1) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:Inv_AckL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocreqfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          } else {
+            trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else if (st == State:S_evict) {      
+          if (in_msg.Type == CoherenceMessageType:InvL1C1) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:Inv_AckL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:I_x_S_evict);
+            reqfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));  
+          } else if (in_msg.Type == CoherenceMessageType:Put_AckL1C1) {
+            setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:I);
+            trigger(Event:deallocreqfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          } else {
+            trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else if (st == State:S_store) {      
+          if (in_msg.Type == CoherenceMessageType:GetM_Ack_ADL1C1) {
+            getTBE(LineAddress, true).acksExpectedL1C1 := in_msg.acksExpectedL1C1;
+            if (getTBE(LineAddress, true).acksExpectedL1C1 == getTBE(LineAddress, true).acksReceivedL1C1) {
+              setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:M);
+              trigger(Event:externalstoreMreqfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            }
+            else if (getTBE(LineAddress, true).acksExpectedL1C1 != getTBE(LineAddress, true).acksReceivedL1C1) {
+              setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:S_store_GetM_Ack_AD);
+              reqfrom_in.dequeue(clockEdge());
+              trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            }  
+          } else if (in_msg.Type == CoherenceMessageType:GetM_Ack_DL1C1) {
+            setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:M);
+            trigger(Event:externalstoreMreqfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));  
+          } else if (in_msg.Type == CoherenceMessageType:InvL1C1) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:Inv_AckL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:I_store);
+            reqfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));  
+          } else if (in_msg.Type == CoherenceMessageType:Inv_AckL1C1) {
+            getTBE(LineAddress, true).acksReceivedL1C1 := getTBE(LineAddress, true).acksReceivedL1C1+1;
+            setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:S_store);
+            reqfrom_in.dequeue(clockEdge());
+            trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          } else {
+            trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else if (st == State:S_store_GetM_Ack_AD) {      
+          if (in_msg.Type == CoherenceMessageType:Inv_AckL1C1) {
+            getTBE(LineAddress, true).acksReceivedL1C1 := getTBE(LineAddress, true).acksReceivedL1C1+1;
+            if (getTBE(LineAddress, true).acksExpectedL1C1 == getTBE(LineAddress, true).acksReceivedL1C1) {
+              setState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress, State:M);
+              trigger(Event:externalstoreMreqfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            }
+            else if (getTBE(LineAddress, true).acksExpectedL1C1 != getTBE(LineAddress, true).acksReceivedL1C1) {
+              setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:S_store_GetM_Ack_AD);
+              reqfrom_in.dequeue(clockEdge());
+              trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            }
+          } else {
+            trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else {
+          trigger(Event:Stallreqfrom_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+        }
+      }
+    }
+  }
+  
+  in_port(mandatory_in, RubyRequest, mandatoryQueue) {
+    if (mandatory_in.isReady(clockEdge())) {
+      peek(mandatory_in, RubyRequest, block_on="LineAddress") {
+        Addr LineAddress := in_msg.LineAddress;
+        Entry entry := getEntry(LineAddress);
+        if (is_invalid(entry) &&
+            cache.cacheAvail(LineAddress) == false ) {
+          Addr LineAddress := cache.cacheProbe(in_msg.LineAddress);
+          State st := getState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress);
+          if (st == State:M) {
+            enqueue(reqto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:L2Cache));
+              out_msg.Type := CoherenceMessageType:PutML1C1;
+              out_msg.Sender := machineID;
+              out_msg.cl := getEntry(LineAddress).cl;
+            }
+            setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:M_evict);
+            // If necessary, forward the eviction to the CPU so that it can squash speculation
+            if (send_evictions) {
+              sequencer.evictionCallback(LineAddress);
+            }
+          } else if (st == State:S) {
+            enqueue(reqto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:L2Cache));
+              out_msg.Type := CoherenceMessageType:PutSL1C1;
+              out_msg.Sender := machineID;
+            }
+            setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:S_evict);
+            // If necessary, forward the eviction to the CPU so that it can squash speculation
+            if (send_evictions) {
+              sequencer.evictionCallback(LineAddress);
+            }
+          } else {
+            trigger(Event:Stallmandatory_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+          }
+        } else {
+          State st := getState(getTBE(LineAddress, false), getEntry(LineAddress), LineAddress);
+          if (in_msg.Type == RubyRequestType:LD ||
+              in_msg.Type == RubyRequestType:IFETCH) {
+            if (st == State:M) {
+              
+              trigger(Event:MloadMEvent, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            } else if (st == State:I) {
+              trigger(Event:allocI_load, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            } else if (st == State:S) {
+              
+              trigger(Event:SloadSEvent, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            } else {
+              trigger(Event:Stallmandatory_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            }
+          } else if (in_msg.Type == RubyRequestType:ST) {
+            if (st == State:M) {
+              
+              trigger(Event:MstoreMEvent, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            } else if (st == State:I) {
+              trigger(Event:allocI_store, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            } else if (st == State:S) {
+              enqueue(reqto_out, CoherenceMessage, responseLatency) {
+                out_msg.LineAddress := LineAddress;
+                out_msg.MessageSize := MessageSizeType:Data;
+                out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:L2Cache));
+                out_msg.Type := CoherenceMessageType:GetML1C1;
+                out_msg.Sender := machineID;
+              }
+              getTBE(LineAddress, true).acksReceivedL1C1 := 0;
+              setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:S_store);
+              mandatory_in.dequeue(clockEdge());
+              
+              trigger(Event:Progress, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            } else {
+              trigger(Event:Stallmandatory_in, LineAddress, getEntry(LineAddress), getTBE(LineAddress, false));
+            }
+          } else {
+            error("Unexpected message type from processor");
+          }
+        }
+      }
+    }
+  }
+  
+  //SLICC.ModularSLICC.cache.GenCacheActions
+  action(deallocEntry, "d", desc="Deallocate an entry") {
+      assert(is_valid(cache_entry));
+      cache.deallocate(address);
+      unset_cache_entry();
+  }
+  action(deallocTBE, "dTBE", desc="Deallocate TBE entry.") {
+    if (is_valid(tbe)) {
+      TBEs.deallocate(address);
+      unset_tbe();
+    }
+  }
+  action(allocEntry, "a", desc="Allocate an entry") {
+     assert(is_invalid(cache_entry));
+     assert(cache.cacheAvail(address));
+     set_cache_entry(cache.allocate(address, new Entry));
+  }
+  action(local_loadHit, "lLh", desc="Callback local load hit.") {
+    // Signal to gem5 that this load/read access was a hit locally
+    assert(is_valid(cache_entry));
+    cache.setMRU(cache_entry);
+    sequencer.readCallback(address, cache_entry.cl, false);
+  }
+  
+  action(local_storeHit, "lSh", desc="Callback local store hit.") {
+    // Signal to gem5 that this store access was a hit locally
+    assert(is_valid(cache_entry));
+    cache.setMRU(cache_entry);
+    sequencer.writeCallback(address, cache_entry.cl, false);
+  }
+  
+  action(remote_loadHit, "rLh", desc="Callback remote load hit.") {
+    // Signal to gem5 that this load/read access was a hit remotely
+    // (i.e. was satisfied through the coherence interface)
+    assert(is_valid(cache_entry));
+    cache.setMRU(cache_entry);
+    sequencer.readCallback(address, cache_entry.cl, true);
+  }
+  
+  action(remote_storeHit, "rSh", desc="Callback remote store hit.") {
+    // Signal to gem5 that this load/read access was a hit remotely
+    // (i.e. was satisfied through the coherence interface)
+    assert(is_valid(cache_entry));
+    cache.setMRU(cache_entry);
+    sequencer.writeCallback(address, cache_entry.cl, true);
+  }
+  
+  action(popmandatory_in, "pmandatory_in0", desc="Pop the mandatory_in queue.") {
+      // Sometimes we need to be able to pop a queue/in_port from within a transition
+      // rather than from within the in_port itself. Thus, we need an action for this,
+      // since transitions cannot execute non-action functions.
+      mandatory_in.dequeue(clockEdge());
+  }
+  
+  action(recyclemandatory_in, "rmandatory_in0", desc="Recycle the mandatory_in port") {
+    mandatory_in.recycle(clockEdge(), cyclesToTicks(recycleLatency));
+  }
+  
+  action(popfwdfrom_in, "pfwdfrom_in0", desc="Pop the fwdfrom_in queue.") {
+      // Sometimes we need to be able to pop a queue/in_port from within a transition
+      // rather than from within the in_port itself. Thus, we need an action for this,
+      // since transitions cannot execute non-action functions.
+      fwdfrom_in.dequeue(clockEdge());
+  }
+  
+  action(recyclefwdfrom_in, "rfwdfrom_in0", desc="Recycle the fwdfrom_in port") {
+    fwdfrom_in.recycle(clockEdge(), cyclesToTicks(recycleLatency));
+  }
+  
+  action(popreqfrom_in, "preqfrom_in0", desc="Pop the reqfrom_in queue.") {
+      // Sometimes we need to be able to pop a queue/in_port from within a transition
+      // rather than from within the in_port itself. Thus, we need an action for this,
+      // since transitions cannot execute non-action functions.
+      reqfrom_in.dequeue(clockEdge());
+  }
+  
+  action(recyclereqfrom_in, "rreqfrom_in0", desc="Recycle the reqfrom_in port") {
+    reqfrom_in.recycle(clockEdge(), cyclesToTicks(recycleLatency));
+  }
+  
+  action(poprespfrom_in, "prespfrom_in0", desc="Pop the respfrom_in queue.") {
+      // Sometimes we need to be able to pop a queue/in_port from within a transition
+      // rather than from within the in_port itself. Thus, we need an action for this,
+      // since transitions cannot execute non-action functions.
+      respfrom_in.dequeue(clockEdge());
+  }
+  
+  action(recyclerespfrom_in, "rrespfrom_in0", desc="Recycle the respfrom_in port") {
+    respfrom_in.recycle(clockEdge(), cyclesToTicks(recycleLatency));
+  }
+  
+  action(actionI_I_load, "II0", desc="TODO") {
+    peek(mandatory_in, RubyRequest) {
+      Addr LineAddress := in_msg.LineAddress;
+      enqueue(reqto_out, CoherenceMessage, responseLatency) {
+        out_msg.LineAddress := LineAddress;
+        out_msg.MessageSize := MessageSizeType:Data;
+        out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:L2Cache));
+        out_msg.Type := CoherenceMessageType:GetSL1C1;
+        out_msg.Sender := machineID;
+      }
+      setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:I_load);
+    }
+  }
+  
+  action(actionI_I_store, "II1", desc="TODO") {
+    peek(mandatory_in, RubyRequest) {
+      Addr LineAddress := in_msg.LineAddress;
+      enqueue(reqto_out, CoherenceMessage, responseLatency) {
+        out_msg.LineAddress := LineAddress;
+        out_msg.MessageSize := MessageSizeType:Data;
+        out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:L2Cache));
+        out_msg.Type := CoherenceMessageType:GetML1C1;
+        out_msg.Sender := machineID;
+      }
+      getTBE(LineAddress, true).acksReceivedL1C1 := 0;
+      setState(getTBE(LineAddress, true), getEntry(LineAddress), LineAddress, State:I_store);
+    }
+  }
+  
+  action(empty, "e", desc="Empty action") {
+      // empty action; useful as SLICC requires valid transitions
+      // to be non-empty, but the actions being invoked can still be empty
+      // e.g. to simulate a z-stall
+  }
+  
+  //SLICC.ModularSLICC.cache.GenCacheTransitions
+  transition({I}, deallocfwdfrom_in) {
+      deallocEntry;
+      deallocTBE;
+      popfwdfrom_in;
+  }
+  
+  transition({I, S, M}, deallocTBEfwdfrom_in) {
+    deallocTBE;
+    popfwdfrom_in;
+  }
+  
+  transition({I}, deallocreqfrom_in) {
+      deallocEntry;
+      deallocTBE;
+      popreqfrom_in;
+  }
+  
+  transition({I, S, M}, deallocTBEreqfrom_in) {
+    deallocTBE;
+    popreqfrom_in;
+  }
+  
+  transition({I}, deallocrespfrom_in) {
+      deallocEntry;
+      deallocTBE;
+      poprespfrom_in;
+  }
+  
+  transition({I, S, M}, deallocTBErespfrom_in) {
+    deallocTBE;
+    poprespfrom_in;
+  }
+  
+  transition(I, allocI_store, I_store) {
+    allocEntry;
+    actionI_I_store;
+    popmandatory_in;
+  }
+  
+  transition(I, allocI_load, I_load) {
+    allocEntry;
+    actionI_I_load;
+    popmandatory_in;
+  }
+  
+  transition(M, MloadMEvent, M) {
+    local_loadHit;
+    popmandatory_in;
+  }
+  
+  transition(S, SloadSEvent, S) {
+    local_loadHit;
+    popmandatory_in;
+  }
+  
+  transition(M, MstoreMEvent, M) {
+    local_storeHit;
+    popmandatory_in;
+  }
+  
+  transition(M, externalloadMfwdfrom_in) {
+    remote_loadHit;
+    deallocTBE;
+    popfwdfrom_in;
+  }
+  
+  transition(S, externalloadSfwdfrom_in) {
+    remote_loadHit;
+    deallocTBE;
+    popfwdfrom_in;
+  }
+  
+  transition(M, externalstoreMfwdfrom_in) {
+    remote_storeHit;
+    deallocTBE;
+    popfwdfrom_in;
+  }
+  
+  transition(M, externalloadMreqfrom_in) {
+    remote_loadHit;
+    deallocTBE;
+    popreqfrom_in;
+  }
+  
+  transition(S, externalloadSreqfrom_in) {
+    remote_loadHit;
+    deallocTBE;
+    popreqfrom_in;
+  }
+  
+  transition(M, externalstoreMreqfrom_in) {
+    remote_storeHit;
+    deallocTBE;
+    popreqfrom_in;
+  }
+  
+  transition(M, externalloadMrespfrom_in) {
+    remote_loadHit;
+    deallocTBE;
+    poprespfrom_in;
+  }
+  
+  transition(S, externalloadSrespfrom_in) {
+    remote_loadHit;
+    deallocTBE;
+    poprespfrom_in;
+  }
+  
+  transition(M, externalstoreMrespfrom_in) {
+    remote_storeHit;
+    deallocTBE;
+    poprespfrom_in;
+  }
+  
+  transition({I, I_load, I_store, I_store_GetM_Ack_AD, I_x_M_evict, I_x_S_evict, M, M_evict, S, S_evict, S_store, S_store_GetM_Ack_AD}, Stallmandatory_in) {
+      recyclemandatory_in;
+  }
+  
+  transition({I, I_load, I_store, I_store_GetM_Ack_AD, I_x_M_evict, I_x_S_evict, M, M_evict, S, S_evict, S_store, S_store_GetM_Ack_AD}, Stallfwdfrom_in) {
+      recyclefwdfrom_in;
+  }
+  
+  transition({I, I_load, I_store, I_store_GetM_Ack_AD, I_x_M_evict, I_x_S_evict, M, M_evict, S, S_evict, S_store, S_store_GetM_Ack_AD}, Stallreqfrom_in) {
+      recyclereqfrom_in;
+  }
+  
+  transition({I, I_load, I_store, I_store_GetM_Ack_AD, I_x_M_evict, I_x_S_evict, M, M_evict, S, S_evict, S_store, S_store_GetM_Ack_AD}, Stallrespfrom_in) {
+      recyclerespfrom_in;
+  }
+  
+  transition({I, I_load, I_store, I_store_GetM_Ack_AD, I_x_M_evict, I_x_S_evict, M, M_evict, S, S_evict, S_store, S_store_GetM_Ack_AD}, Progress) {
+      empty;
+  }
+}
+// EOF<cache>

@@ -1,0 +1,48 @@
+//SLICC.ModularSLICC.msg.GenMsgEnum
+enumeration(CoherenceMessageType, desc="Types of coherence messages") {
+  CBWR_Data_IL1C1, desc="CBWR_Data_IL1C1";
+  CBWR_Data_M_PDL1C1, desc="CBWR_Data_M_PDL1C1";
+  CBWR_Data_O_PDL1C1, desc="CBWR_Data_O_PDL1C1";
+  CleanUniqueL1C1, desc="CleanUniqueL1C1";
+  CompAckL1C1, desc="CompAckL1C1";
+  CompDBIDRespL1C1, desc="CompDBIDRespL1C1";
+  CompData_EL1C1, desc="CompData_EL1C1";
+  CompData_M_PDL1C1, desc="CompData_M_PDL1C1";
+  CompData_SL1C1, desc="CompData_SL1C1";
+  Comp_EL1C1, desc="Comp_EL1C1";
+  Comp_IL1C1, desc="Comp_IL1C1";
+  EvictL1C1, desc="EvictL1C1";
+  ReadSharedL1C1, desc="ReadSharedL1C1";
+  ReadUniqueL1C1, desc="ReadUniqueL1C1";
+  SnpCleanInvalidL1C1, desc="SnpCleanInvalidL1C1";
+  SnpRespData_I_PDL1C1, desc="SnpRespData_I_PDL1C1";
+  SnpResp_IL1C1, desc="SnpResp_IL1C1";
+  SnpResp_O_Fwded_SL1C1, desc="SnpResp_O_Fwded_SL1C1";
+  SnpResp_S_Fwded_SL1C1, desc="SnpResp_S_Fwded_SL1C1";
+  SnpSharedFwdL1C1, desc="SnpSharedFwdL1C1";
+  WriteBackFullL1C1, desc="WriteBackFullL1C1";
+}
+
+//SLICC.ModularSLICC.msg.GenMsgStruct
+structure(CoherenceMessage, desc="...", interface="Message") {
+  Addr LineAddress,             desc="Physical address for this request";
+  CoherenceMessageType Type,   desc="Type of request (GetS, GetM, PutM, etc)";
+  MachineID Sender,            desc="Node who initiated the request";
+  NetDest Destination,         desc="Multicast destination mask";
+  MessageSizeType MessageSize, desc="size category of the message";
+  DataBlock cl, desc="Cache line / Data cl";
+
+
+  bool functionalRead(Packet *pkt) {
+    // A check on message type should appear here so that only those
+    // messages that contain data
+    return testAndRead(LineAddress, cl, pkt);
+  }
+
+  bool functionalWrite(Packet *pkt) {
+    // No check on message type required since the protocol should read
+    // data block from only those messages that contain valid data
+    return testAndWrite(LineAddress, cl, pkt);
+  }
+}
+

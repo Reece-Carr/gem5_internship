@@ -1,0 +1,6 @@
+protocol "MSI_IF";
+include "RubySlicc_interfaces.slicc";
+include "MSI_IF_msg.sm";
+include "MSI_IF_cache.sm";
+include "MSI_IF_dir.sm";
+include "MSI_IF_dma.sm";

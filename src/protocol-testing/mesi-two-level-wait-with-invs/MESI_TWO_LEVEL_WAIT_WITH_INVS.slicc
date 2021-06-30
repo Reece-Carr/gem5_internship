@@ -1,0 +1,7 @@
+protocol "MESI_TWO_LEVEL_WAIT_WITH_INVS";
+include "RubySlicc_interfaces.slicc";
+include "msg.sm";
+include "L1cache.sm";
+include "L2cache.sm";
+include "dir.sm";
+include "dma.sm";

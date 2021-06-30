@@ -1,0 +1,729 @@
+machine(MachineType:L2Cache, "Directory protocol")
+    :
+      CacheMemory *cacheMemory;
+      Cycles toMemLatency := 1;
+
+    // Forwarding requests from the directory *to* the caches.
+    MessageBuffer *forwardToL1, network="To", virtual_network="1",
+          vnet_type="forward";
+    // Response from the directory *to* the cache.
+    MessageBuffer *responseToL1OrDir, network="To", virtual_network="2",
+          vnet_type="response";
+
+    // Requests *from* the cache to the directory
+    MessageBuffer *requestFromL1, network="From", virtual_network="0",
+          vnet_type="request";
+
+    // Responses *from* the cache to the directory
+    MessageBuffer *responseFromL1OrDir, network="From", virtual_network="2",
+          vnet_type="response";
+
+    MessageBuffer *requestToDir, network="To", virtual_network="3", vnet_type="request";
+
+{
+    // For many thins in SLICC you can specify a default. However, this default
+    // must use the C++ name (mangled SLICC name). For the state below you have
+    // to use the controller name and the name we use for states.
+    state_declaration(State, desc="L2 states",
+                      default="L2Cache_State_I") {
+        // Stable states.
+        // NOTE: Thise are "cache-centric" states like in Sorin et al.
+        // However, The access permissions are memory-centric.
+        I, AccessPermission:Invalid,  desc="Invalid in the caches.";
+        IP, AccessPermission:Read_Write, desc="Invalid in L1s but present in L2s";
+        S, AccessPermission:Read_Only,   desc="At least one cache has the blk";
+        M, AccessPermission:Invalid,     desc="A cache has the block in M";
+
+        // Transient states
+        S_D, AccessPermission:Busy,      desc="Moving to S, but need data";
+
+        // Waiting for data from memory
+        S_m, AccessPermission:Busy, desc="In S waiting for mem";
+        M_m, AccessPermission:Busy, desc="Moving to M waiting for mem";
+
+        // Waiting for write-ack from memory
+        MI_m, AccessPermission:Busy,       desc="Moving to I waiting for ack";
+        SS_m, AccessPermission:Busy,       desc="Moving to I waiting for ack";
+        SI_m, AccessPermission:Busy,      desc="...";
+    
+        // Beep boop this is now an L2
+        MMI, AccessPermission:Busy,       desc="";
+        SI_Dirty, AccessPermission:Busy,       desc="";
+        SI_Clean, AccessPermission:Busy,       desc="";
+        
+    }
+
+    enumeration(Event, desc="Directory events") {
+        // Data requests from the cache
+        GetS,         desc="Request for read-only data from cache";
+        GetM,         desc="Request for read-write data from cache";
+
+        // Writeback requests from the cache
+        PutSNotLast,  desc="PutS and the block has other sharers";
+        PutSLast,     desc="PutS and the block has no other sharers";
+        PutMOwner,    desc="Dirty data writeback from the owner";
+        PutMNonOwner, desc="Dirty data writeback from non-owner";
+
+        // Cache responses
+        Data,         desc="Response to fwd request with data";
+
+        // From Memory
+        MemData,      desc="Data from memory";
+        MemAck,       desc="Ack from memory that write is complete";
+
+        InvAck, desc="...";
+        LastInvAck, desc="...";
+        L2_Replacement, desc="...";
+        L2_Replacement_clean, desc="...";
+        MemInv, desc="...";
+    }
+
+    // NOTE: We use a netdest for the sharers and the owner so we can simply
+    // copy the structure into the message we send as a response.
+    structure(Entry, desc="...", interface="AbstractCacheEntry") {
+        State CacheState,         desc="Directory state";
+        DataBlock DataBlk,      desc="...";
+        NetDest Sharers,        desc="Sharers for this block";
+        NetDest Owner,          desc="Owner of this block";
+        bool isDirty, default="false", desc="Dirty? Clean??? Batman?????";
+    }
+
+    structure(TBE, desc="Entry for transient requests") {
+        int AcksOutstanding, default=0, desc="Number of acks left to receive.";
+        MachineID Requestor, desc="...";
+    }
+
+    // Table of TBE entries. This is defined externally in
+    // src/mem/ruby/structures/TBETable.hh. It is templatized on the TBE
+    // structure defined above.
+    structure(TBETable, external="yes") {
+      TBE lookup(Addr);
+      void allocate(Addr);
+      void deallocate(Addr);
+      bool isPresent(Addr);
+    }
+
+    TBETable TBEs, template="<L2Cache_TBE>", constructor="m_number_of_TBEs";
+    Tick clockEdge();
+    Tick cyclesToTicks(Cycles c);
+    void set_cache_entry(AbstractCacheEntry a);
+    void unset_cache_entry();
+    void set_tbe(TBE b);
+    void unset_tbe();
+
+    MachineID mapAddressToMachine(Addr addr, MachineType mtype);
+
+    Entry getCacheEntry(Addr addr), return_by_pointer = "yes" {
+        return static_cast(Entry, "pointer", cacheMemory.lookup(addr));
+    }
+
+    State getState(TBE tbe, Entry cache_entry, Addr addr) {
+        if (is_valid(cache_entry)) { return cache_entry.CacheState; }
+        else { return State:I; }
+    }
+
+    void setState(TBE tbe, Entry cache_entry, Addr addr, State state) {
+      if (is_valid(cache_entry)) {
+        cache_entry.CacheState := state;
+        if (state == State:M) {
+            //DPRINTF(RubySlicc, "Owner %s\n", cache_entry.Owner);
+            assert(cache_entry.Owner.count() == 1);
+            assert(cache_entry.Sharers.count() == 0);
+        } else if (state == State:S)  {
+            assert(cache_entry.Owner.count() == 0);
+            assert(cache_entry.Sharers.count() > 0);
+        } else if (state == State:I || state == State:IP)  {
+            assert(cache_entry.Owner.count() == 0);
+            assert(cache_entry.Sharers.count() == 0);
+        }
+      }
+    }
+
+    AccessPermission getAccessPermission(Addr addr) {
+        Entry cache_entry := getCacheEntry(addr);
+        if(is_valid(cache_entry)) {
+            return L2Cache_State_to_permission(cache_entry.CacheState);
+        }
+
+        return AccessPermission:NotPresent;
+    }
+
+    void setAccessPermission(Entry cache_entry, Addr addr, State state) {
+        if (is_valid(cache_entry)) {
+            cache_entry.changePermission(L2Cache_State_to_permission(state));
+        }
+    }
+
+    void functionalRead(Addr addr, Packet *pkt) {
+        testAndRead(addr, getCacheEntry(addr).DataBlk, pkt);
+    }
+
+    int functionalWrite(Addr addr, Packet *pkt) {
+        int num_functional_writes := 0;
+        num_functional_writes := num_functional_writes + testAndWrite(addr, getCacheEntry(addr).DataBlk, pkt);
+        return num_functional_writes;
+    }
+
+
+    /*************************************************************************/
+    // Network ports
+
+    out_port(request_out, MemoryMsg, requestToDir);
+    out_port(forward_out, RequestMsg, forwardToL1);
+    out_port(response_out, ResponseMsg, responseToL1OrDir);
+
+    in_port(response_in, ResponseMsg, responseFromL1OrDir) {
+        if (response_in.isReady(clockEdge())) {
+            peek(response_in, ResponseMsg) {
+                DPRINTF(RubySlicc, "L2 receiving response %d at address 0x%x\n", in_msg.Type, in_msg.addr);
+                Entry cache_entry := getCacheEntry(in_msg.addr);
+                TBE tbe := TBEs[in_msg.addr];
+                if (in_msg.Type == CoherenceResponseType:Data) {
+                    trigger(Event:Data, in_msg.addr, cache_entry, tbe);
+                } else if(in_msg.Type == CoherenceResponseType:MEMORY_DATA) {
+                    trigger(Event:MemData, in_msg.addr, cache_entry, tbe);
+                } else if(in_msg.Type == CoherenceResponseType:MEMORY_ACK) {
+                    trigger(Event:MemAck, in_msg.addr, cache_entry, tbe);
+                } else if(in_msg.Type == CoherenceResponseType:INV) {
+                    assert(is_valid(cache_entry));
+                    trigger(Event:MemInv, in_msg.addr, cache_entry, tbe);
+                } else if (in_msg.Type == CoherenceResponseType:InvAck) {
+                  assert(is_valid(tbe));
+                  if (tbe.AcksOutstanding == 1) {
+                      // If there is exactly one ack remaining then we
+                      // know it is the last ack.
+                      trigger(Event:LastInvAck, in_msg.addr, cache_entry,
+                              tbe);
+                  } else {
+                      trigger(Event:InvAck, in_msg.addr, cache_entry,
+                              tbe);
+                  }
+                } else {
+                    error("Unexpected message type.");
+                }
+            }
+        }
+    }
+
+    in_port(request_in, RequestMsg, requestFromL1) {
+        if (request_in.isReady(clockEdge())) {
+            peek(request_in, RequestMsg) {
+                DPRINTF(RubySlicc, "L2 receiving request %d at address 0x%x\n", in_msg.Type, in_msg.addr);
+                Entry cache_entry := getCacheEntry(in_msg.addr);
+                TBE tbe := TBEs[in_msg.addr];
+                if (cacheMemory.cacheAvail(in_msg.addr)) {
+                    if (in_msg.Type == CoherenceRequestType:GetS) {
+                        // NOTE: Since we don't have a TBE in this machine, there
+                        // is no need to pass a TBE into trigger. Also, for the
+                        // directory there is no cache entry.
+                        trigger(Event:GetS, in_msg.addr, cache_entry, tbe);
+                    } else if (in_msg.Type == CoherenceRequestType:GetM) {
+                        trigger(Event:GetM, in_msg.addr, cache_entry, tbe);
+                    } else if (in_msg.Type == CoherenceRequestType:PutS) {
+                        assert(is_valid(cache_entry));
+                        if (cache_entry.Sharers.count() == 1) {
+                            assert(cache_entry.Sharers.isElement(in_msg.Requestor));
+                            trigger(Event:PutSLast, in_msg.addr, cache_entry, tbe);
+                        } else {
+                            trigger(Event:PutSNotLast, in_msg.addr, cache_entry, tbe);
+                        }
+                    } else if (in_msg.Type == CoherenceRequestType:PutM) {
+                        assert(is_valid(cache_entry));
+                        if (cache_entry.Owner.isElement(in_msg.Requestor)) {
+                            trigger(Event:PutMOwner, in_msg.addr, cache_entry, tbe);
+                        } else {
+                            trigger(Event:PutMNonOwner, in_msg.addr, cache_entry, tbe);
+                        }
+                    } else {
+                        error("Unexpected message type.");
+                    }
+                } else {
+                    // No room in L2; need to evict something!
+                    Addr victim := cacheMemory.cacheProbe(in_msg.addr);
+                    Entry L2cache_entry := getCacheEntry(victim);
+                    trigger(Event:L2_Replacement, victim, L2cache_entry, TBEs[victim]);
+                    if (L2cache_entry.isDirty) {
+                      trigger(Event:L2_Replacement, victim, L2cache_entry, TBEs[victim]);
+                    } else {
+                      trigger(Event:L2_Replacement_clean,
+                              victim, L2cache_entry, TBEs[victim]);
+                    }
+                }
+            }
+        }
+    }
+
+
+
+    /*************************************************************************/
+    // Actions
+
+    // Memory actions.
+
+    action(sendMemRead, "r", desc="Send a memory read request") {
+      enqueue(request_out, RequestMsg, toMemLatency) {
+          out_msg.addr := address;
+          out_msg.Type := CoherenceRequestType:GetS;
+          out_msg.Destination.add(mapAddressToMachine(address, MachineType:Directory));
+          out_msg.Requestor := machineID;
+          out_msg.MessageSize := MessageSizeType:Control;
+      }
+    }
+
+    action(sendDataToDir, "w", desc="Write data to memory") {
+      assert(is_valid(cache_entry));
+      enqueue(response_out, ResponseMsg, toMemLatency) {
+          out_msg.addr := address;
+          out_msg.Type := CoherenceResponseType:PutM;
+          out_msg.Destination.add(mapAddressToMachine(address, MachineType:Directory));
+          out_msg.Sender := machineID;
+          out_msg.MessageSize := MessageSizeType:Writeback_Data;
+          out_msg.DataBlk := cache_entry.DataBlk;
+      }
+    }
+
+    action(sendCleanPutToDir, "wC", desc="Write data to memory") {
+      assert(is_valid(cache_entry));
+      enqueue(response_out, ResponseMsg, toMemLatency) {
+          out_msg.addr := address;
+          out_msg.Type := CoherenceResponseType:PutS;
+          out_msg.Destination.add(mapAddressToMachine(address, MachineType:Directory));
+          out_msg.Sender := machineID;
+          out_msg.MessageSize := MessageSizeType:Writeback_Control;
+      }
+    }
+
+    action(addReqToSharers, "aS", desc="Add requestor to sharer list") {
+        assert(is_valid(cache_entry));
+        peek(request_in, RequestMsg) {
+            cache_entry.Sharers.add(in_msg.Requestor);
+        }
+    }
+
+    action(setOwner, "sO", desc="Set the owner") {
+        assert(is_valid(cache_entry));
+        peek(request_in, RequestMsg) {
+            cache_entry.Owner.add(in_msg.Requestor);
+        }
+    }
+
+    action(addOwnerToSharers, "oS", desc="Add the owner to sharers") {
+        assert(is_valid(cache_entry));
+        assert(cache_entry.Owner.count() == 1);
+        cache_entry.Sharers.addNetDest(cache_entry.Owner);
+    }
+
+    action(removeReqFromSharers, "rS", desc="Remove requestor from sharers") {
+        assert(is_valid(cache_entry));
+        peek(request_in, RequestMsg) {
+            cache_entry.Sharers.remove(in_msg.Requestor);
+        }
+    }
+
+    action(clearSharers, "cS", desc="Clear the sharer list") {
+        assert(is_valid(cache_entry));
+        cache_entry.Sharers.clear();
+    }
+
+    action(clearOwner, "cO", desc="Clear the owner") {
+        assert(is_valid(cache_entry));
+        cache_entry.Owner.clear();
+    }
+
+    // Invalidates and forwards
+
+    action(sendInvToSharers, "i", desc="Send invalidate to all sharers") {
+        assert(is_valid(cache_entry));
+        peek(request_in, RequestMsg) {
+            enqueue(forward_out, RequestMsg, 1) {
+                out_msg.addr := address;
+                out_msg.Type := CoherenceRequestType:Inv;
+                out_msg.Requestor := in_msg.Requestor;
+                out_msg.Destination := cache_entry.Sharers;
+                out_msg.MessageSize := MessageSizeType:Control;
+            }
+        }
+    }
+
+    action(sendInvToSharersFromMe, "iM", desc="Send invalidate to all sharers") {
+        assert(is_valid(cache_entry));
+        enqueue(forward_out, RequestMsg, 1) {
+            out_msg.addr := address;
+            out_msg.Type := CoherenceRequestType:Inv;
+            out_msg.Requestor := machineID;
+            out_msg.Destination := cache_entry.Sharers;
+            out_msg.MessageSize := MessageSizeType:Control;
+        }
+    }
+
+    action(sendFwdGetS, "fS", desc="Send forward getS to owner") {
+        assert(is_valid(cache_entry));
+        assert(cache_entry.Owner.count() == 1);
+        peek(request_in, RequestMsg) {
+            enqueue(forward_out, RequestMsg, 1) {
+                out_msg.addr := address;
+                out_msg.Type := CoherenceRequestType:GetS;
+                out_msg.Requestor := in_msg.Requestor;
+                out_msg.Destination := cache_entry.Owner;
+                out_msg.MessageSize := MessageSizeType:Control;
+            }
+        }
+    }
+
+    action(sendFwdGetMFromMe, "fMM", desc="Send forward getM to owner") {
+        assert(is_valid(cache_entry));
+        assert(cache_entry.Owner.count() == 1);
+            enqueue(forward_out, RequestMsg, 1) {
+                out_msg.addr := address;
+                out_msg.Type := CoherenceRequestType:GetM;
+                out_msg.Requestor := machineID;
+                out_msg.Destination := cache_entry.Owner;
+                out_msg.MessageSize := MessageSizeType:Control;
+            }
+    }
+
+    action(sendFwdGetM, "fM", desc="Send forward getM to owner") {
+        assert(is_valid(cache_entry));
+        assert(cache_entry.Owner.count() == 1);
+        peek(request_in, RequestMsg) {
+            enqueue(forward_out, RequestMsg, 1) {
+                out_msg.addr := address;
+                out_msg.Type := CoherenceRequestType:GetM;
+                out_msg.Requestor := in_msg.Requestor;
+                out_msg.Destination := cache_entry.Owner;
+                out_msg.MessageSize := MessageSizeType:Control;
+            }
+        }
+    }
+
+    // Responses to requests
+
+    // This also needs to send along the number of sharers!!!!
+    action(sendDataToReqFromEntry, "dE", desc="Send data from entry to requestor. ") {
+        assert(is_valid(cache_entry));
+        peek(request_in, RequestMsg) {
+            enqueue(response_out, ResponseMsg, 1) {
+                out_msg.addr := address;
+                out_msg.Type := CoherenceResponseType:Data;
+                out_msg.Sender := machineID;
+                out_msg.Destination.add(in_msg.Requestor);
+                out_msg.DataBlk := cache_entry.DataBlk;
+                out_msg.MessageSize := MessageSizeType:Data;
+                // Only need to include acks if we are the owner.
+                if (cache_entry.Owner.isElement(in_msg.Requestor)) {
+                    out_msg.Acks := cache_entry.Sharers.count();
+                } else {
+                    out_msg.Acks := 0;
+                }
+                assert(out_msg.Acks >= 0);
+            }
+        }
+    }
+    action(sendDataToReq, "d", desc="Send data from memory to requestor. ") {
+                                    //"May need to send sharer number, too") {
+        assert(is_valid(tbe));
+        assert(is_valid(cache_entry));
+        peek(response_in, ResponseMsg) {
+            assert(in_msg.Type == CoherenceResponseType:MEMORY_DATA);
+            enqueue(response_out, ResponseMsg, 1) {
+                out_msg.addr := address;
+                out_msg.Type := CoherenceResponseType:Data;
+                out_msg.Sender := tbe.Requestor;
+                out_msg.Destination.add(tbe.Requestor);
+                out_msg.DataBlk := in_msg.DataBlk;
+                out_msg.MessageSize := MessageSizeType:Data;
+                // Only need to include acks if we are the owner.
+                if (cache_entry.Owner.isElement(tbe.Requestor)) {
+                    out_msg.Acks := cache_entry.Sharers.count();
+                } else {
+                    out_msg.Acks := 0;
+                }
+                assert(out_msg.Acks >= 0);
+            }
+        }
+    }
+
+    action(sendPutAck, "a", desc="Send the put ack") {
+        peek(request_in, RequestMsg) {
+            enqueue(forward_out, RequestMsg, 1) {
+                out_msg.addr := address;
+                out_msg.Type := CoherenceRequestType:PutAck;
+                out_msg.Requestor := machineID;
+                out_msg.Destination.add(in_msg.Requestor);
+                out_msg.MessageSize := MessageSizeType:Control;
+            }
+        }
+    }
+
+    // Queue management
+
+    action(popResponseQueue, "pR", desc="Pop the response queue") {
+        response_in.dequeue(clockEdge());
+    }
+
+    action(popRequestQueue, "pQ", desc="Pop the request queue") {
+        request_in.dequeue(clockEdge());
+    }
+
+    // Stalling actions
+    action(recycleRequests, "z", desc="Recycle the incoming request") {
+        request_in.recycle(clockEdge(), cyclesToTicks(recycle_latency));
+    }
+
+    action(writeDataFromReq, "wDR", desc="...") {
+        assert(is_valid(cache_entry));
+        cache_entry.isDirty := true;
+        peek(request_in, RequestMsg) {
+            cache_entry.DataBlk := in_msg.DataBlk;
+        }
+    }
+
+    action(writeDataFromResp, "wDRe", desc="...") {
+        assert(is_valid(cache_entry));
+        cache_entry.isDirty := true;
+        peek(response_in, ResponseMsg) {
+            assert(in_msg.Type == CoherenceResponseType:Data
+                   || in_msg.Type == CoherenceResponseType:MEMORY_DATA);
+            cache_entry.DataBlk := in_msg.DataBlk;
+        }
+    }
+
+    action(decrAcks, "da", desc="Decrement the number of acks") {
+        assert(is_valid(tbe));
+        tbe.AcksOutstanding := tbe.AcksOutstanding - 1;
+        // This annotates the protocol trace
+        APPEND_TRANSITION_COMMENT("Acks: ");
+        APPEND_TRANSITION_COMMENT(tbe.AcksOutstanding);
+    }
+
+    action(allocateTBE, "aTBE", desc="...") {
+        assert(is_valid(cache_entry));
+        assert(is_invalid(tbe));
+        TBEs.allocate(address);
+        set_tbe(TBEs[address]);
+        tbe.AcksOutstanding := cache_entry.Sharers.count();
+    }
+
+    action(deallocateTBE, "dT", desc="Deallocate TBE") {
+        assert(is_valid(tbe));
+        TBEs.deallocate(address);
+        unset_tbe();
+    }
+
+    action(setTBERequestor, "sTR", desc="...") {
+        assert(is_valid(tbe));
+        peek(request_in, RequestMsg) {
+            tbe.Requestor := in_msg.Requestor;
+        }
+    }
+
+    action(allocateCacheBlock, "aB", desc="Allocate a cache block") {
+        assert(is_invalid(cache_entry));
+        assert(cacheMemory.cacheAvail(address));
+        // Create a new entry and update cache_entry to the new entry
+        set_cache_entry(cacheMemory.allocate(address, new Entry));
+    }
+
+    action(deallocateCacheBlock, "dB", desc="Deallocate a cache block") {
+        assert(is_valid(cache_entry));
+        cacheMemory.deallocate(address);
+        // clear the cache_entry variable (now it's invalid)
+        unset_cache_entry();
+    }
+        
+
+    /*************************************************************************/
+    // transitions
+
+    transition(I, GetS, S_m) {
+        allocateCacheBlock;
+        allocateTBE;
+        setTBERequestor;
+        sendMemRead;
+        addReqToSharers;
+        popRequestQueue;
+    }
+
+    transition(I, {PutSNotLast, PutSLast, PutMNonOwner}) {
+        sendPutAck;
+        popRequestQueue;
+    }
+
+    transition(S_m, MemData, S) {
+        writeDataFromResp;
+        sendDataToReq;
+        deallocateTBE;
+        popResponseQueue;
+    }
+
+    transition({S, IP}, GetS, S) {
+        sendDataToReqFromEntry;
+        addReqToSharers;
+        popRequestQueue;
+    }
+
+    transition(I, GetM, M_m) {
+        allocateCacheBlock;
+        allocateTBE;
+        setTBERequestor;
+        sendMemRead;
+        setOwner;
+        popRequestQueue;
+    }
+
+    transition(M_m, MemData, M) {
+        writeDataFromResp;
+        sendDataToReq;
+        clearSharers; // NOTE: This isn't *required* in some cases.
+        deallocateTBE;
+        popResponseQueue;
+    }
+
+    transition({S, IP}, GetM, M) {
+        removeReqFromSharers;
+        setOwner;
+        sendDataToReqFromEntry;
+        sendInvToSharers;
+        clearSharers; // NOTE: This isn't *required* in some cases.
+        popRequestQueue;
+    }
+
+    transition({S, S_D, SS_m, S_m}, {PutSNotLast, PutMNonOwner}) {
+        removeReqFromSharers;
+        sendPutAck;
+        popRequestQueue;
+    }
+
+    transition(S, PutSLast, IP) {
+        removeReqFromSharers;
+        sendPutAck;
+        popRequestQueue;
+    }
+
+    transition(M, GetS, S_D) {
+        sendFwdGetS;
+        addReqToSharers;
+        addOwnerToSharers;
+        clearOwner;
+        popRequestQueue;
+    }
+
+    transition(M, GetM) {
+        sendFwdGetM;
+        clearOwner;
+        setOwner;
+        popRequestQueue;
+    }
+
+    transition({M, M_m, MI_m}, {PutSNotLast, PutSLast, PutMNonOwner}) {
+        sendPutAck;
+        popRequestQueue;
+    }
+
+    transition(M, PutMOwner, IP) {
+        writeDataFromReq;
+        clearOwner;
+        sendPutAck;
+        popRequestQueue;
+    }
+
+    transition(S_D, {GetS, GetM}) {
+        recycleRequests;
+    }
+
+    transition(S_D, PutSLast) {
+        removeReqFromSharers;
+        sendPutAck;
+        popRequestQueue;
+    }
+
+    transition(S_D, Data, S) {
+        writeDataFromResp;
+        popResponseQueue;
+    }
+
+    // If we get another request for a block that's waiting on memory,
+    // stall that request.
+    transition({MI_m, S_m, M_m}, {GetS, GetM}) {
+        recycleRequests;
+    }
+    
+    transition(IP, L2_Replacement, MI_m) {
+        sendDataToDir;
+    }
+
+    transition(IP, MemInv, MI_m) {
+        sendDataToDir; // L2 -> dir -> DMA is faster than main memory -> dir -> DMA, probably
+        popResponseQueue;
+    }
+
+    transition(IP, L2_Replacement_clean, SI_m) {
+        sendCleanPutToDir;
+    }
+
+    transition(S, L2_Replacement, SI_Dirty) {
+        allocateTBE;
+        sendInvToSharersFromMe;
+    }
+
+    transition(S, MemInv, SI_Dirty) {
+        allocateTBE;
+        sendInvToSharersFromMe;
+        popResponseQueue;
+    }
+
+    transition(S, L2_Replacement_clean, SI_Clean) {
+        allocateTBE;
+        sendInvToSharersFromMe;
+    }
+
+    transition(M, {L2_Replacement, L2_Replacement_clean}, MMI) {
+        sendFwdGetMFromMe;
+        // No such thing as a clean line when it's in M in of the caches!
+    }
+
+    transition(M, MemInv, MMI) {
+        sendFwdGetMFromMe;
+        // No such thing as a clean line when it's in M in of the caches!
+        popResponseQueue;
+    }
+
+    transition(MMI, Data, MI_m) {
+        writeDataFromResp;
+        sendDataToDir;
+        popResponseQueue;
+    }
+
+    transition({SI_Dirty, SI_Clean}, InvAck) {
+        decrAcks;
+        popResponseQueue;
+    }
+
+    transition(SI_Dirty, LastInvAck, MI_m) {
+        deallocateTBE;
+        clearSharers;
+        sendDataToDir;
+        popResponseQueue;
+    }
+
+    transition(SI_Clean, LastInvAck, SI_m) {
+        deallocateTBE;
+        clearSharers;
+        sendCleanPutToDir;
+        popResponseQueue;
+    }
+        
+    transition({MI_m, SI_m}, MemAck, I) {
+        deallocateCacheBlock;
+        popResponseQueue;
+    }
+
+    transition({MI_m, SI_Dirty, SI_Clean, MMI}, {L2_Replacement, L2_Replacement_clean}) {
+        recycleRequests;
+    }
+
+    transition({MMI, MI_m}, MemInv) {
+        // Already evicting; just pop the msg
+        popResponseQueue;
+    }
+}

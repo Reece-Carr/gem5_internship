@@ -1,0 +1,325 @@
+      0: system.ruby.l1_cntrl0.sequencer.slave1: Functional access for address: 0x6ec0
+      0: system.ruby: Functional Write request for 0x6ec0
+      0: system.ruby.dir_cntrl0.requestToMemory: functional write for 0x6ec0
+      0: system.ruby.dir_cntrl0.responseFromMemory: functional write for 0x6ec0
+      0: system.ruby.dir_cntrl0.respTo: functional write for 0x6ec0
+      0: system.ruby.dir_cntrl0.respFrom: functional write for 0x6ec0
+      0: system.ruby.dir_cntrl0.fwdTo: functional write for 0x6ec0
+      0: system.ruby.dir_cntrl0.fwdFrom: functional write for 0x6ec0
+      0: system.ruby.dir_cntrl0.reqTo: functional write for 0x6ec0
+      0: system.ruby.dir_cntrl0.reqFrom: functional write for 0x6ec0
+      0: system.ruby.dir_cntrl0.directory: Looking up address: 0x6ec0
+      0: system.ruby.dir_cntrl0.directory: Looking up address: 0x6ec0
+      0: system.ruby.l1_cntrl0.mandatoryQueue: functional write for 0x6ec0
+      0: system.ruby.l1_cntrl0.respTo: functional write for 0x6ec0
+      0: system.ruby.l1_cntrl0.respFrom: functional write for 0x6ec0
+      0: system.ruby.l1_cntrl0.fwdTo: functional write for 0x6ec0
+      0: system.ruby.l1_cntrl0.fwdFrom: functional write for 0x6ec0
+      0: system.ruby.l1_cntrl0.reqTo: functional write for 0x6ec0
+      0: system.ruby.l1_cntrl0.reqFrom: functional write for 0x6ec0
+      0: system.ruby.l1_cntrl1.mandatoryQueue: functional write for 0x6ec0
+      0: system.ruby.l1_cntrl1.respTo: functional write for 0x6ec0
+      0: system.ruby.l1_cntrl1.respFrom: functional write for 0x6ec0
+      0: system.ruby.l1_cntrl1.fwdTo: functional write for 0x6ec0
+      0: system.ruby.l1_cntrl1.fwdFrom: functional write for 0x6ec0
+      0: system.ruby.l1_cntrl1.reqTo: functional write for 0x6ec0
+      0: system.ruby.l1_cntrl1.reqFrom: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers00: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers01: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers02: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers03: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers04: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers05: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers06: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers07: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers08: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers09: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers10: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers11: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers12: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers13: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers14: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers15: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers16: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers17: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers18: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers19: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers20: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers21: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers22: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers23: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers24: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers25: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers26: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers27: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers28: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers29: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers30: functional write for 0x6ec0
+      0: system.ruby.network.routers0.port_buffers31: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers00: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers01: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers02: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers03: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers04: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers05: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers06: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers07: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers08: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers09: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers10: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers11: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers12: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers13: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers14: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers15: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers16: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers17: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers18: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers19: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers20: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers21: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers22: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers23: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers24: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers25: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers26: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers27: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers28: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers29: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers30: functional write for 0x6ec0
+      0: system.ruby.network.routers1.port_buffers31: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers00: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers01: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers02: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers03: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers04: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers05: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers06: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers07: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers08: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers09: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers10: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers11: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers12: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers13: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers14: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers15: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers16: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers17: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers18: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers19: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers20: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers21: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers22: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers23: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers24: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers25: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers26: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers27: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers28: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers29: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers30: functional write for 0x6ec0
+      0: system.ruby.network.routers2.port_buffers31: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers00: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers01: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers02: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers03: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers04: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers05: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers06: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers07: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers08: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers09: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers10: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers11: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers12: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers13: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers14: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers15: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers16: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers17: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers18: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers19: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers20: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers21: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers22: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers23: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers24: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers25: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers26: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers27: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers28: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers29: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers30: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers31: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers32: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers33: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers34: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers35: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers36: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers37: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers38: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers39: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers40: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers41: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers42: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers43: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers44: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers45: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers46: functional write for 0x6ec0
+      0: system.ruby.network.routers3.port_buffers47: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers00: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers01: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers02: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers03: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers04: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers05: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers06: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers07: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers08: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers09: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers10: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers11: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers12: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers13: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers14: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers15: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers16: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers17: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers18: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers19: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers20: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers21: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers22: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers23: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers24: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers25: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers26: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers27: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers28: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers29: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers30: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers31: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers32: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers33: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers34: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers35: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers36: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers37: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers38: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers39: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers40: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers41: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers42: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers43: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers44: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers45: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers46: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers47: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers48: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers49: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers50: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers51: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers52: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers53: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers54: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers55: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers56: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers57: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers58: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers59: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers60: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers61: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers62: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers63: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers64: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers65: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers66: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers67: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers68: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers69: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers70: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers71: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers72: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers73: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers74: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers75: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers76: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers77: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers78: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers79: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers80: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers81: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers82: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers83: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers84: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers85: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers86: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers87: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers88: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers89: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers90: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers91: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers92: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers93: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers94: functional write for 0x6ec0
+      0: system.ruby.network.int_link_buffers95: functional write for 0x6ec0
+17626000: system.ruby.l1_cntrl0.mandatoryQueue: Message: [RubyRequest: LineAddress = 0x6ec0 PhysicalAddress = 0x6ec8 Type = LD ProgramCounter = 0x7ffff8002194 AccessMode = Supervisor Size = 8 Prefetch = No ]
+17626000: system.ruby.l1_cntrl0: [L1Cache_Controller 0], Time: 35252, state: I, event: allocI_load, addr: 0x6ec0
+17626000: system.ruby.l1_cntrl0.cache: No tag match for address: 0x6ec0
+17626000: system.ruby.l1_cntrl0.cache: address: 0x6ec0
+17626000: system.ruby.l1_cntrl0.mandatoryQueue: Message: [RubyRequest: LineAddress = 0x6ec0 PhysicalAddress = 0x6ec8 Type = LD ProgramCounter = 0x7ffff8002194 AccessMode = Supervisor Size = 8 Prefetch = No ]
+17629500: system.ruby.dir_cntrl0.reqTo: Message: [CoherenceMessage: LineAddress = [0x6ec0, line 0x6ec0] Type = GetSL1C1 Sender = L1Cache-0 Destination = [NetDest (17)  - 0 0  -  -  - 1  -  -  -  -  -  -  -  -  -  -  -  -  - ] MessageSize = Data cl = [ 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 ] acksExpectedL1C1 = 0 ]
+17629500: system.ruby.dir_cntrl0.directory: Looking up address: 0x6ec0
+17629500: system.ruby.dir_cntrl0.directory: Looking up address: 0x6ec0
+17629500: system.ruby.dir_cntrl0.directory: Looking up address: 0x6ec0
+17632000: system.ruby.dir_cntrl0.requestToMemory: Message: [MemoryMsg: addr = [0x6ec0, line 0x6ec0] Type = MEMORY_READ Sender = L1Cache-0 OriginalRequestorMachId = NULL-0 DataBlk = [ 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 ] MessageSize = Request_Control Len = 0 Prefetch = No ReadX = 0 Acks = 0 ]
+17671500: system.ruby.dir_cntrl0.responseFromMemory: Message: [MemoryMsg: addr = [0x6ec0, line 0x6ec0] Type = MEMORY_READ Sender = Directory-0 OriginalRequestorMachId = L1Cache-0 DataBlk = [ 0xe8 0x2 0x40 0x0 0x0 0x0 0x0 0x0 0xa 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x93 0x3 0x0 0x0 0x0 0x0 0x0 0x0 0xb 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x18 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x15 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x3 0x0 0x0 0x0 0x0 0x0 0x0 0x0 ] MessageSize = Response_Data Len = 0 Prefetch = No ReadX = 0 Acks = 0 ]
+17671500: system.ruby.dir_cntrl0.directory: Looking up address: 0x6ec0
+17671500: system.ruby.dir_cntrl0.directory: Looking up address: 0x6ec0
+17671500: system.ruby.dir_cntrl0.directory: Looking up address: 0x6ec0
+17671500: system.ruby.dir_cntrl0: [Directory_Controller 0], Time: 35343, state: S, event: Stall, addr: 0x6ec0
+17671500: system.ruby.dir_cntrl0.directory: Looking up address: 0x6ec0
+17671500: system.ruby.dir_cntrl0.directory: Looking up address: 0x6ec0
+17675000: system.ruby.l1_cntrl0.respFrom: Message: [CoherenceMessage: LineAddress = [0x6ec0, line 0x6ec0] Type = GetS_AckL1C1 Sender = Directory-0 Destination = [NetDest (17)  - 1 0  -  -  - 0  -  -  -  -  -  -  -  -  -  -  -  -  - ] MessageSize = Data cl = [ 0xe8 0x2 0x40 0x0 0x0 0x0 0x0 0x0 0xa 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x93 0x3 0x0 0x0 0x0 0x0 0x0 0x0 0xb 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x18 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x15 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x3 0x0 0x0 0x0 0x0 0x0 0x0 0x0 ] acksExpectedL1C1 = 0 ]
+17675000: system.ruby.l1_cntrl0: [L1Cache_Controller 0], Time: 35350, state: S, event: externalloadSrespfrom_in, addr: 0x6ec0
+17686000: system.ruby.l1_cntrl0.mandatoryQueue: Message: [RubyRequest: LineAddress = 0x6ec0 PhysicalAddress = 0x6ed8 Type = LD ProgramCounter = 0x7ffff8002194 AccessMode = Supervisor Size = 8 Prefetch = No ]
+17686000: system.ruby.l1_cntrl0: [L1Cache_Controller 0], Time: 35372, state: S, event: SloadSEvent, addr: 0x6ec0
+17697000: system.ruby.l1_cntrl0.mandatoryQueue: Message: [RubyRequest: LineAddress = 0x6ec0 PhysicalAddress = 0x6ee8 Type = LD ProgramCounter = 0x7ffff8002194 AccessMode = Supervisor Size = 8 Prefetch = No ]
+17697000: system.ruby.l1_cntrl0: [L1Cache_Controller 0], Time: 35394, state: S, event: SloadSEvent, addr: 0x6ec0
+17708000: system.ruby.l1_cntrl0.mandatoryQueue: Message: [RubyRequest: LineAddress = 0x6ec0 PhysicalAddress = 0x6ef8 Type = LD ProgramCounter = 0x7ffff8002194 AccessMode = Supervisor Size = 8 Prefetch = No ]
+17708000: system.ruby.l1_cntrl0: [L1Cache_Controller 0], Time: 35416, state: S, event: SloadSEvent, addr: 0x6ec0
+25625000: system.ruby.l1_cntrl0.mandatoryQueue: Message: [RubyRequest: LineAddress = 0x6ec0 PhysicalAddress = 0x6ef0 Type = ST ProgramCounter = 0x7ffff8002de4 AccessMode = Supervisor Size = 8 Prefetch = No ]
+25628500: system.ruby.dir_cntrl0.reqTo: Message: [CoherenceMessage: LineAddress = [0x6ec0, line 0x6ec0] Type = GetML1C1 Sender = L1Cache-0 Destination = [NetDest (17)  - 0 0  -  -  - 1  -  -  -  -  -  -  -  -  -  -  -  -  - ] MessageSize = Data cl = [ 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 ] acksExpectedL1C1 = 0 ]
+25628500: system.ruby.dir_cntrl0.directory: Looking up address: 0x6ec0
+25628500: system.ruby.dir_cntrl0.directory: Looking up address: 0x6ec0
+25628500: system.ruby.dir_cntrl0.directory: Looking up address: 0x6ec0
+25631000: system.ruby.dir_cntrl0.requestToMemory: Message: [MemoryMsg: addr = [0x6ec0, line 0x6ec0] Type = MEMORY_READ Sender = L1Cache-0 OriginalRequestorMachId = NULL-0 DataBlk = [ 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 ] MessageSize = Request_Control Len = 0 Prefetch = No ReadX = 0 Acks = 0 ]
+25684500: system.ruby.dir_cntrl0.responseFromMemory: Message: [MemoryMsg: addr = [0x6ec0, line 0x6ec0] Type = MEMORY_READ Sender = Directory-0 OriginalRequestorMachId = L1Cache-0 DataBlk = [ 0xe8 0x2 0x40 0x0 0x0 0x0 0x0 0x0 0xa 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x93 0x3 0x0 0x0 0x0 0x0 0x0 0x0 0xb 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x18 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x15 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x3 0x0 0x0 0x0 0x0 0x0 0x0 0x0 ] MessageSize = Response_Data Len = 0 Prefetch = No ReadX = 0 Acks = 0 ]
+25684500: system.ruby.dir_cntrl0.directory: Looking up address: 0x6ec0
+25684500: system.ruby.dir_cntrl0.directory: Looking up address: 0x6ec0
+25684500: system.ruby.dir_cntrl0.directory: Looking up address: 0x6ec0
+25684500: system.ruby.dir_cntrl0: [Directory_Controller 0], Time: 51369, state: M, event: Stall, addr: 0x6ec0
+25684500: system.ruby.dir_cntrl0.directory: Looking up address: 0x6ec0
+25684500: system.ruby.dir_cntrl0.directory: Looking up address: 0x6ec0
+25688000: system.ruby.l1_cntrl0.respFrom: Message: [CoherenceMessage: LineAddress = [0x6ec0, line 0x6ec0] Type = GetM_Ack_DL1C1 Sender = Directory-0 Destination = [NetDest (17)  - 1 0  -  -  - 0  -  -  -  -  -  -  -  -  -  -  -  -  - ] MessageSize = Data cl = [ 0xe8 0x2 0x40 0x0 0x0 0x0 0x0 0x0 0xa 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x93 0x3 0x0 0x0 0x0 0x0 0x0 0x0 0xb 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x18 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x15 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x3 0x0 0x0 0x0 0x0 0x0 0x0 0x0 ] acksExpectedL1C1 = 0 ]
+25688000: system.ruby.l1_cntrl0: [L1Cache_Controller 0], Time: 51376, state: M, event: externalstoreMrespfrom_in, addr: 0x6ec0
+25688000: global: Testing Lock for addr: 0x6ec0 cur -1 con 0
+45034500: global: Testing Lock for addr: 0x6ec0 cur -1 con 0
+45038000: system.ruby.dir_cntrl0.reqTo: Message: [CoherenceMessage: LineAddress = [0x6ec0, line 0x6ec0] Type = PutML1C1 Sender = L1Cache-0 Destination = [NetDest (17)  - 0 0  -  -  - 1  -  -  -  -  -  -  -  -  -  -  -  -  - ] MessageSize = Data cl = [ 0xe8 0x2 0x40 0x0 0x0 0x0 0x0 0x0 0xa 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x93 0x3 0x0 0x0 0x0 0x0 0x0 0x0 0xb 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x18 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x15 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x40 0x81 0x22 0xf8 0xff 0x7f 0x0 0x0 0x3 0x0 0x0 0x0 0x0 0x0 0x0 0x0 ] acksExpectedL1C1 = 0 ]
+45038000: system.ruby.dir_cntrl0.directory: Looking up address: 0x6ec0
+45038000: system.ruby.dir_cntrl0.directory: Looking up address: 0x6ec0
+45038000: system.ruby.dir_cntrl0.directory: Looking up address: 0x6ec0
+45041500: system.ruby.l1_cntrl0.fwdFrom: Message: [CoherenceMessage: LineAddress = [0x6ec0, line 0x6ec0] Type = Put_AckL1C1 Sender = Directory-0 Destination = [NetDest (17)  - 1 0  -  -  - 0  -  -  -  -  -  -  -  -  -  -  -  -  - ] MessageSize = Data cl = [ 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 ] acksExpectedL1C1 = 0 ]
+45041500: system.ruby.l1_cntrl0: [L1Cache_Controller 0], Time: 90083, state: I, event: deallocfwdfrom_in, addr: 0x6ec0
+45041500: system.ruby.l1_cntrl0.cache: address: 0x6ec0 found
+45041500: system.ruby.l1_cntrl0.cache: address: 0x6ec0
+88335500: system.ruby.l1_cntrl0.mandatoryQueue: Message: [RubyRequest: LineAddress = 0x6ec0 PhysicalAddress = 0x6ec8 Type = LD ProgramCounter = 0x7ffff800d6df AccessMode = Supervisor Size = 8 Prefetch = No ]
+88342500: system.ruby.l1_cntrl0.mandatoryQueue: Message: [RubyRequest: LineAddress = 0x6ec0 PhysicalAddress = 0x6ec8 Type = LD ProgramCounter = 0x7ffff800d6df AccessMode = Supervisor Size = 8 Prefetch = No ]
+88342500: system.ruby.l1_cntrl0: [L1Cache_Controller 0], Time: 176685, state: I, event: allocI_load, addr: 0x6ec0
+88342500: system.ruby.l1_cntrl0.cache: No tag match for address: 0x6ec0
+88342500: system.ruby.l1_cntrl0.cache: address: 0x6ec0
+88342500: system.ruby.l1_cntrl0.mandatoryQueue: Message: [RubyRequest: LineAddress = 0x6ec0 PhysicalAddress = 0x6ec8 Type = LD ProgramCounter = 0x7ffff800d6df AccessMode = Supervisor Size = 8 Prefetch = No ]
+88346000: system.ruby.dir_cntrl0.reqTo: Message: [CoherenceMessage: LineAddress = [0x6ec0, line 0x6ec0] Type = GetSL1C1 Sender = L1Cache-0 Destination = [NetDest (17)  - 0 0  -  -  - 1  -  -  -  -  -  -  -  -  -  -  -  -  - ] MessageSize = Data cl = [ 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0 ] acksExpectedL1C1 = 0 ]
+88346000: system.ruby.dir_cntrl0.directory: Looking up address: 0x6ec0
+88346000: system.ruby.dir_cntrl0.directory: Looking up address: 0x6ec0

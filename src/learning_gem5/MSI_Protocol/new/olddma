@@ -1,0 +1,1189 @@
+//SLICC.ModularSLICC.cache.GenCacheHeader
+machine(MachineType:DMA, "DMA Cache controller")
+: DMASequencer *dma_sequencer;
+  CacheMemory *cache;
+
+  // The following latencies should be exposed as command-line parameters in a future update
+  Cycles responseLatency := 1;
+
+  // Required networks
+  MessageBuffer *mandatoryQueue;
+
+  // Dynamic networks
+  MessageBuffer *fwdTo, network="To", virtual_network="2", vnet_type="fwd";
+  MessageBuffer *fwdFrom, network="From", virtual_network="2", vnet_type="fwd";
+  MessageBuffer *respTo, network="To", virtual_network="3", vnet_type="resp";
+  MessageBuffer *respFrom, network="From", virtual_network="3", vnet_type="resp";
+  MessageBuffer *reqTo, network="To", virtual_network="4", vnet_type="req";
+  MessageBuffer *reqFrom, network="From", virtual_network="4", vnet_type="req";
+
+{
+  //SLICC.ModularSLICC.cache.GenDMAStateDecl
+  state_declaration(State, desc="DMA states", default="DMA_State_I") {
+    I, AccessPermission:Invalid, desc="... TODO ...";
+    I_load, AccessPermission:Invalid, desc="... TODO ...";
+    I_store, AccessPermission:Invalid, desc="... TODO ...";
+    I_store_GetM_Ack_AD, AccessPermission:Invalid, desc="... TODO ...";
+    I_x_M_evict, AccessPermission:Invalid, desc="... TODO ...";
+    I_x_S_evict, AccessPermission:Invalid, desc="... TODO ...";
+    M, AccessPermission:Read_Write, desc="... TODO ...";
+    M_evict, AccessPermission:Invalid, desc="... TODO ...";
+    S, AccessPermission:Read_Only, desc="... TODO ...";
+    S_evict, AccessPermission:Invalid, desc="... TODO ...";
+    S_store, AccessPermission:Invalid, desc="... TODO ...";
+    S_store_GetM_Ack_AD, AccessPermission:Invalid, desc="... TODO ...";
+  }
+  //SLICC.ModularSLICC.cache.GenCacheEvents
+  enumeration(Event, desc="Cache events") {
+    SloadSEvent, desc="S->S upon local load hit.";
+    MloadMEvent, desc="M->M upon local load hit.";
+    MstoreMEvent, desc="M->M upon local store hit.";
+    deallocfwdfrom_in, desc="Event indicating the cache line should be deallocated following a message received on fwdfrom_in.";
+    deallocrespfrom_in, desc="Event indicating the cache line should be deallocated following a message received on respfrom_in.";
+    deallocreqfrom_in, desc="Event indicating the cache line should be deallocated following a message received on reqfrom_in.";
+    allocI_store, desc="Event indicating cache entry alloc before moving to I_store.";
+    allocI_load, desc="Event indicating cache entry alloc before moving to I_load.";
+  }
+  //SLICC.ModularSLICC.cache.GenCacheStruct
+  structure(Entry, desc="Stored variables of the Cache machine", interface="AbstractCacheEntry") {
+    State DMAState, desc="Cache state";
+    DataBlock clL1, desc="... TODO ...";
+    int acksReceivedL1, default=0, desc="...TODO...";
+    int acksExpectedL1, default=0, desc="...TODO...";
+  }
+  //SLICC.ModularSLICC.cache.GenCacheTBE
+  structure(TBE, desc="TBE entries for DMA machine") {
+    Addr PhysicalAddress, desc="physical address";
+    State TBEState,       desc="Transient State";
+    DataBlock DataBlk,    desc="Data to be written";
+  
+  }
+  
+  structure(TBETable, external="yes"){
+    TBE lookup(Addr);
+    void allocate(Addr);
+    void deallocate(Addr);
+    bool isPresent(Addr);
+  }
+  
+  TBETable TBEs, template="<DMA_TBE>", constructor="m_number_of_TBEs";
+  
+  void set_tbe(TBE b);
+  void unset_tbe();
+  //SLICC.ModularSLICC.cache.GenCacheStaticFns
+  Tick clockEdge();
+  void set_cache_entry(AbstractCacheEntry a);
+  void unset_cache_entry();
+  
+  MachineID mapAddressToMachine(Addr addr, MachineType mtype);
+  
+  Entry getDMAEntry(Addr LineAddress), return_by_pointer="yes" {
+    return static_cast(Entry, "pointer", cache.lookup(LineAddress));
+  }
+
+  State getState(TBE tbe, Entry cache_entry, Addr LineAddress) {
+    if (is_valid(tbe)) {
+      DPRINTF(RubySlicc, "getState = %d at 0x%x\n", tbe.TBEState, LineAddress);
+      return tbe.TBEState;
+    } else if (is_valid(cache_entry)) {
+      DPRINTF(RubySlicc, "getState = %d at 0x%x\n", cache_entry.DMAState, LineAddress);
+      return cache_entry.DMAState;
+    } else {
+      DPRINTF(RubySlicc, "getState = %d at 0x%x\n", State:I, LineAddress);
+      return State:I;
+    }
+  }
+  
+  void setState(TBE tbe, Entry cache_entry, Addr LineAddress, State state) {
+    if (is_valid(tbe)) {
+      tbe.TBEState := state;
+    }
+    if (is_valid(cache_entry)) {
+      DPRINTF(RubySlicc, "setState hit in entry\n");
+      cache_entry.DMAState := state;
+    }
+    DPRINTF(RubySlicc, "setState = %d at 0x%x\n", state, LineAddress);
+  }
+  
+  AccessPermission getAccessPermission(Addr LineAddress) {
+    TBE tbe := TBEs[LineAddress];
+    if (is_valid(tbe)) {
+      return DMA_State_to_permission(tbe.TBEState);
+    }
+    Entry cache_entry := getDMAEntry(LineAddress);
+    if (is_valid(cache_entry)) {
+      return DMA_State_to_permission(cache_entry.DMAState);
+    } else {
+      return AccessPermission:NotPresent;
+    }
+  }
+  
+  void setAccessPermission(Entry cache_entry, Addr LineAddress, State state) {
+    if (is_valid(cache_entry)) {
+      cache_entry.changePermission(DMA_State_to_permission(state));
+    }
+  }
+  
+  void functionalRead(Addr addr, Packet *pkt) {
+      TBE tbe := TBEs[addr];
+      if(is_valid(tbe)) {
+          testAndRead(addr, tbe.DataBlk, pkt);
+      } else {
+          testAndRead(addr, getDMAEntry(addr).clL1, pkt);
+      }
+  }
+  
+  int functionalWrite(Addr addr, Packet *pkt) {
+      int num_functional_writes := 0;
+  
+      TBE tbe := TBEs[addr];
+      if(is_valid(tbe)) {
+          num_functional_writes := num_functional_writes +
+              testAndWrite(addr, tbe.DataBlk, pkt);
+          return num_functional_writes;
+      }
+  
+      num_functional_writes := num_functional_writes +
+              testAndWrite(addr, getDMAEntry(addr).clL1, pkt);
+      return num_functional_writes;
+  }
+  
+  //SLICC.ModularSLICC.cache.GenCacheOutPorts
+  out_port(fwdto_out, CoherenceMessage, fwdTo);
+  out_port(reqto_out, CoherenceMessage, reqTo);
+  out_port(respto_out, CoherenceMessage, respTo);
+  //SLICC.ModularSLICC.cache.GenCacheInPorts
+  in_port(fwdfrom_in, CoherenceMessage, fwdFrom) {
+    if (fwdfrom_in.isReady(clockEdge())) {
+      peek (fwdfrom_in, CoherenceMessage) {
+        TBE tbe := TBEs[in_msg.LineAddress];
+        Entry entry := getDMAEntry(in_msg.LineAddress);
+        State st := getState(tbe, entry, in_msg.LineAddress);
+        Addr LineAddress := in_msg.LineAddress;
+        if (st == State:I) {
+          // stall
+        } else if (st == State:I_load) {      
+          if (in_msg.Type == CoherenceMessageType:GetS_Ack) {
+            entry.clL1 := in_msg.cl;
+            setState(tbe, entry, LineAddress, State:S);
+            // Signal to gem5 that this read request
+            // was not satisfied locally but has now
+            // been satisfied through the coherence interface
+            assert(is_valid(entry));
+            cache.setMRU(entry);
+            dma_sequencer.dataCallback(entry.clL1, LineAddress);
+            fwdfrom_in.dequeue(clockEdge());
+          } else {
+            // stall
+          }
+        } else if (st == State:I_store) {      
+          if (in_msg.Type == CoherenceMessageType:GetM_Ack_AD) {
+            entry.acksExpectedL1 := in_msg.acksExpected;
+            entry.clL1 := in_msg.cl;
+            if (entry.acksExpectedL1 == entry.acksReceivedL1)  {
+              entry.acksReceivedL1 := 0;
+              entry.acksExpectedL1 := 0;
+              setState(tbe, entry, LineAddress, State:M);
+              // Signal to gem5 that this write request
+              // was not satisfied locally but has now
+              // been satisfied through the coherence interface
+              assert(is_valid(entry));
+              cache.setMRU(entry);
+              dma_sequencer.ackCallback(LineAddress);
+              fwdfrom_in.dequeue(clockEdge());
+            }
+            else if (entry.acksExpectedL1 != entry.acksReceivedL1)  {
+              setState(tbe, entry, LineAddress, State:I_store_GetM_Ack_AD);
+              fwdfrom_in.dequeue(clockEdge());
+            }
+          } else if (in_msg.Type == CoherenceMessageType:GetM_Ack_D) {
+            entry.clL1 := in_msg.cl;
+            entry.acksReceivedL1 := 0;
+            entry.acksExpectedL1 := 0;
+            setState(tbe, entry, LineAddress, State:M);
+            // Signal to gem5 that this write request
+            // was not satisfied locally but has now
+            // been satisfied through the coherence interface
+            assert(is_valid(entry));
+            cache.setMRU(entry);
+            dma_sequencer.ackCallback(LineAddress);
+            fwdfrom_in.dequeue(clockEdge());
+          } else if (in_msg.Type == CoherenceMessageType:Inv_Ack) {
+            entry.acksReceivedL1 := entry.acksReceivedL1+1;
+            setState(tbe, entry, LineAddress, State:I_store);
+            fwdfrom_in.dequeue(clockEdge());
+          } else {
+            // stall
+          }
+        } else if (st == State:I_store_GetM_Ack_AD) {      
+          if (in_msg.Type == CoherenceMessageType:Inv_Ack) {
+            entry.acksReceivedL1 := entry.acksReceivedL1+1;
+            if (entry.acksExpectedL1 == entry.acksReceivedL1)  {
+              entry.acksReceivedL1 := 0;
+              entry.acksExpectedL1 := 0;
+              setState(tbe, entry, LineAddress, State:M);
+              // Signal to gem5 that this write request
+              // was not satisfied locally but has now
+              // been satisfied through the coherence interface
+              assert(is_valid(entry));
+              cache.setMRU(entry);
+              dma_sequencer.ackCallback(LineAddress);
+              fwdfrom_in.dequeue(clockEdge());
+            }
+            else if (entry.acksExpectedL1 != entry.acksReceivedL1)  {
+              setState(tbe, entry, LineAddress, State:I_store_GetM_Ack_AD);
+              fwdfrom_in.dequeue(clockEdge());
+            }
+          } else {
+            // stall
+          }
+        } else if (st == State:I_x_M_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Put_Ack) {
+            setState(tbe, entry, LineAddress, State:I);
+            trigger(Event:deallocfwdfrom_in, LineAddress, entry, tbe);
+          } else {
+            // stall
+          }
+        } else if (st == State:I_x_S_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Put_Ack) {
+            setState(tbe, entry, LineAddress, State:I);
+            trigger(Event:deallocfwdfrom_in, LineAddress, entry, tbe);
+          } else {
+            // stall
+          }
+        } else if (st == State:M) {      
+          if (in_msg.Type == CoherenceMessageType:Fwd_GetM) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:GetM_Ack_D;
+              out_msg.Sender := machineID;
+              out_msg.cl := entry.clL1;
+            }
+            setState(tbe, entry, LineAddress, State:I);
+            trigger(Event:deallocfwdfrom_in, LineAddress, entry, tbe);
+          } else if (in_msg.Type == CoherenceMessageType:Fwd_GetS) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:GetS_Ack;
+              out_msg.Sender := machineID;
+              out_msg.cl := entry.clL1;
+            }
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:WB;
+              out_msg.Sender := machineID;
+              out_msg.cl := entry.clL1;
+            }
+            setState(tbe, entry, LineAddress, State:S);
+            fwdfrom_in.dequeue(clockEdge());
+          } else {
+            // stall
+          }
+        } else if (st == State:M_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Fwd_GetM) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:GetM_Ack_D;
+              out_msg.Sender := machineID;
+              out_msg.cl := entry.clL1;
+            }
+            setState(tbe, entry, LineAddress, State:I_x_M_evict);
+            fwdfrom_in.dequeue(clockEdge());
+          } else if (in_msg.Type == CoherenceMessageType:Fwd_GetS) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:GetS_Ack;
+              out_msg.Sender := machineID;
+              out_msg.cl := entry.clL1;
+            }
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:WB;
+              out_msg.Sender := machineID;
+              out_msg.cl := entry.clL1;
+            }
+            setState(tbe, entry, LineAddress, State:S_evict);
+            fwdfrom_in.dequeue(clockEdge());
+          } else if (in_msg.Type == CoherenceMessageType:Put_Ack) {
+            setState(tbe, entry, LineAddress, State:I);
+            trigger(Event:deallocfwdfrom_in, LineAddress, entry, tbe);
+          } else {
+            // stall
+          }
+        } else if (st == State:S) {      
+          if (in_msg.Type == CoherenceMessageType:Inv) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:Inv_Ack;
+              out_msg.Sender := machineID;
+              out_msg.cl := entry.clL1;
+            }
+            setState(tbe, entry, LineAddress, State:I);
+            trigger(Event:deallocfwdfrom_in, LineAddress, entry, tbe);
+          } else {
+            // stall
+          }
+        } else if (st == State:S_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Inv) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:Inv_Ack;
+              out_msg.Sender := machineID;
+              out_msg.cl := entry.clL1;
+            }
+            setState(tbe, entry, LineAddress, State:I_x_S_evict);
+            fwdfrom_in.dequeue(clockEdge());
+          } else if (in_msg.Type == CoherenceMessageType:Put_Ack) {
+            setState(tbe, entry, LineAddress, State:I);
+            trigger(Event:deallocfwdfrom_in, LineAddress, entry, tbe);
+          } else {
+            // stall
+          }
+        } else if (st == State:S_store) {      
+          if (in_msg.Type == CoherenceMessageType:GetM_Ack_AD) {
+            entry.acksExpectedL1 := in_msg.acksExpected;
+            entry.clL1 := in_msg.cl;
+            if (entry.acksExpectedL1 == entry.acksReceivedL1)  {
+              entry.acksReceivedL1 := 0;
+              entry.acksExpectedL1 := 0;
+              setState(tbe, entry, LineAddress, State:M);
+              // Signal to gem5 that this write request
+              // was not satisfied locally but has now
+              // been satisfied through the coherence interface
+              assert(is_valid(entry));
+              cache.setMRU(entry);
+              dma_sequencer.ackCallback(LineAddress);
+              fwdfrom_in.dequeue(clockEdge());
+            }
+            else if (entry.acksExpectedL1 != entry.acksReceivedL1)  {
+              setState(tbe, entry, LineAddress, State:S_store_GetM_Ack_AD);
+              fwdfrom_in.dequeue(clockEdge());
+            }
+          } else if (in_msg.Type == CoherenceMessageType:GetM_Ack_D) {
+            entry.acksReceivedL1 := 0;
+            entry.acksExpectedL1 := 0;
+            setState(tbe, entry, LineAddress, State:M);
+            // Signal to gem5 that this write request
+            // was not satisfied locally but has now
+            // been satisfied through the coherence interface
+            assert(is_valid(entry));
+            cache.setMRU(entry);
+            dma_sequencer.ackCallback(LineAddress);
+            fwdfrom_in.dequeue(clockEdge());
+          } else if (in_msg.Type == CoherenceMessageType:Inv) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:Inv_Ack;
+              out_msg.Sender := machineID;
+              out_msg.cl := entry.clL1;
+            }
+            setState(tbe, entry, LineAddress, State:I_store);
+            fwdfrom_in.dequeue(clockEdge());
+          } else if (in_msg.Type == CoherenceMessageType:Inv_Ack) {
+            entry.acksReceivedL1 := entry.acksReceivedL1+1;
+            setState(tbe, entry, LineAddress, State:S_store);
+            fwdfrom_in.dequeue(clockEdge());
+          } else {
+            // stall
+          }
+        } else if (st == State:S_store_GetM_Ack_AD) {      
+          if (in_msg.Type == CoherenceMessageType:Inv_Ack) {
+            entry.acksReceivedL1 := entry.acksReceivedL1+1;
+            if (entry.acksExpectedL1 == entry.acksReceivedL1)  {
+              entry.acksReceivedL1 := 0;
+              entry.acksExpectedL1 := 0;
+              setState(tbe, entry, LineAddress, State:M);
+              // Signal to gem5 that this write request
+              // was not satisfied locally but has now
+              // been satisfied through the coherence interface
+              assert(is_valid(entry));
+              cache.setMRU(entry);
+              dma_sequencer.ackCallback(LineAddress);
+              fwdfrom_in.dequeue(clockEdge());
+            }
+            else if (entry.acksExpectedL1 != entry.acksReceivedL1)  {
+              setState(tbe, entry, LineAddress, State:S_store_GetM_Ack_AD);
+              fwdfrom_in.dequeue(clockEdge());
+            }
+          } else {
+            // stall
+          }
+        } else {
+          // stall
+        }
+      }
+    }
+  }
+  
+  in_port(reqfrom_in, CoherenceMessage, reqFrom) {
+    if (reqfrom_in.isReady(clockEdge())) {
+      peek (reqfrom_in, CoherenceMessage) {
+        TBE tbe := TBEs[in_msg.LineAddress];
+        Entry entry := getDMAEntry(in_msg.LineAddress);
+        State st := getState(tbe, entry, in_msg.LineAddress);
+        Addr LineAddress := in_msg.LineAddress;
+        if (st == State:I) {
+          // stall
+        } else if (st == State:I_load) {      
+          if (in_msg.Type == CoherenceMessageType:GetS_Ack) {
+            entry.clL1 := in_msg.cl;
+            setState(tbe, entry, LineAddress, State:S);
+            // Signal to gem5 that this read request
+            // was not satisfied locally but has now
+            // been satisfied through the coherence interface
+            assert(is_valid(entry));
+            cache.setMRU(entry);
+            dma_sequencer.dataCallback(entry.clL1, LineAddress);
+            reqfrom_in.dequeue(clockEdge());
+          } else {
+            // stall
+          }
+        } else if (st == State:I_store) {      
+          if (in_msg.Type == CoherenceMessageType:GetM_Ack_AD) {
+            entry.acksExpectedL1 := in_msg.acksExpected;
+            entry.clL1 := in_msg.cl;
+            if (entry.acksExpectedL1 == entry.acksReceivedL1)  {
+              entry.acksReceivedL1 := 0;
+              entry.acksExpectedL1 := 0;
+              setState(tbe, entry, LineAddress, State:M);
+              // Signal to gem5 that this write request
+              // was not satisfied locally but has now
+              // been satisfied through the coherence interface
+              assert(is_valid(entry));
+              cache.setMRU(entry);
+              dma_sequencer.ackCallback(LineAddress);
+              reqfrom_in.dequeue(clockEdge());
+            }
+            else if (entry.acksExpectedL1 != entry.acksReceivedL1)  {
+              setState(tbe, entry, LineAddress, State:I_store_GetM_Ack_AD);
+              reqfrom_in.dequeue(clockEdge());
+            }
+          } else if (in_msg.Type == CoherenceMessageType:GetM_Ack_D) {
+            entry.clL1 := in_msg.cl;
+            entry.acksReceivedL1 := 0;
+            entry.acksExpectedL1 := 0;
+            setState(tbe, entry, LineAddress, State:M);
+            // Signal to gem5 that this write request
+            // was not satisfied locally but has now
+            // been satisfied through the coherence interface
+            assert(is_valid(entry));
+            cache.setMRU(entry);
+            dma_sequencer.ackCallback(LineAddress);
+            reqfrom_in.dequeue(clockEdge());
+          } else if (in_msg.Type == CoherenceMessageType:Inv_Ack) {
+            entry.acksReceivedL1 := entry.acksReceivedL1+1;
+            setState(tbe, entry, LineAddress, State:I_store);
+            reqfrom_in.dequeue(clockEdge());
+          } else {
+            // stall
+          }
+        } else if (st == State:I_store_GetM_Ack_AD) {      
+          if (in_msg.Type == CoherenceMessageType:Inv_Ack) {
+            entry.acksReceivedL1 := entry.acksReceivedL1+1;
+            if (entry.acksExpectedL1 == entry.acksReceivedL1)  {
+              entry.acksReceivedL1 := 0;
+              entry.acksExpectedL1 := 0;
+              setState(tbe, entry, LineAddress, State:M);
+              // Signal to gem5 that this write request
+              // was not satisfied locally but has now
+              // been satisfied through the coherence interface
+              assert(is_valid(entry));
+              cache.setMRU(entry);
+              dma_sequencer.ackCallback(LineAddress);
+              reqfrom_in.dequeue(clockEdge());
+            }
+            else if (entry.acksExpectedL1 != entry.acksReceivedL1)  {
+              setState(tbe, entry, LineAddress, State:I_store_GetM_Ack_AD);
+              reqfrom_in.dequeue(clockEdge());
+            }
+          } else {
+            // stall
+          }
+        } else if (st == State:I_x_M_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Put_Ack) {
+            setState(tbe, entry, LineAddress, State:I);
+            trigger(Event:deallocreqfrom_in, LineAddress, entry, tbe);
+          } else {
+            // stall
+          }
+        } else if (st == State:I_x_S_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Put_Ack) {
+            setState(tbe, entry, LineAddress, State:I);
+            trigger(Event:deallocreqfrom_in, LineAddress, entry, tbe);
+          } else {
+            // stall
+          }
+        } else if (st == State:M) {      
+          if (in_msg.Type == CoherenceMessageType:Fwd_GetM) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:GetM_Ack_D;
+              out_msg.Sender := machineID;
+              out_msg.cl := entry.clL1;
+            }
+            setState(tbe, entry, LineAddress, State:I);
+            trigger(Event:deallocreqfrom_in, LineAddress, entry, tbe);
+          } else if (in_msg.Type == CoherenceMessageType:Fwd_GetS) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:GetS_Ack;
+              out_msg.Sender := machineID;
+              out_msg.cl := entry.clL1;
+            }
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:WB;
+              out_msg.Sender := machineID;
+              out_msg.cl := entry.clL1;
+            }
+            setState(tbe, entry, LineAddress, State:S);
+            reqfrom_in.dequeue(clockEdge());
+          } else {
+            // stall
+          }
+        } else if (st == State:M_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Fwd_GetM) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:GetM_Ack_D;
+              out_msg.Sender := machineID;
+              out_msg.cl := entry.clL1;
+            }
+            setState(tbe, entry, LineAddress, State:I_x_M_evict);
+            reqfrom_in.dequeue(clockEdge());
+          } else if (in_msg.Type == CoherenceMessageType:Fwd_GetS) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:GetS_Ack;
+              out_msg.Sender := machineID;
+              out_msg.cl := entry.clL1;
+            }
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:WB;
+              out_msg.Sender := machineID;
+              out_msg.cl := entry.clL1;
+            }
+            setState(tbe, entry, LineAddress, State:S_evict);
+            reqfrom_in.dequeue(clockEdge());
+          } else if (in_msg.Type == CoherenceMessageType:Put_Ack) {
+            setState(tbe, entry, LineAddress, State:I);
+            trigger(Event:deallocreqfrom_in, LineAddress, entry, tbe);
+          } else {
+            // stall
+          }
+        } else if (st == State:S) {      
+          if (in_msg.Type == CoherenceMessageType:Inv) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:Inv_Ack;
+              out_msg.Sender := machineID;
+              out_msg.cl := entry.clL1;
+            }
+            setState(tbe, entry, LineAddress, State:I);
+            trigger(Event:deallocreqfrom_in, LineAddress, entry, tbe);
+          } else {
+            // stall
+          }
+        } else if (st == State:S_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Inv) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:Inv_Ack;
+              out_msg.Sender := machineID;
+              out_msg.cl := entry.clL1;
+            }
+            setState(tbe, entry, LineAddress, State:I_x_S_evict);
+            reqfrom_in.dequeue(clockEdge());
+          } else if (in_msg.Type == CoherenceMessageType:Put_Ack) {
+            setState(tbe, entry, LineAddress, State:I);
+            trigger(Event:deallocreqfrom_in, LineAddress, entry, tbe);
+          } else {
+            // stall
+          }
+        } else if (st == State:S_store) {      
+          if (in_msg.Type == CoherenceMessageType:GetM_Ack_AD) {
+            entry.acksExpectedL1 := in_msg.acksExpected;
+            entry.clL1 := in_msg.cl;
+            if (entry.acksExpectedL1 == entry.acksReceivedL1)  {
+              entry.acksReceivedL1 := 0;
+              entry.acksExpectedL1 := 0;
+              setState(tbe, entry, LineAddress, State:M);
+              // Signal to gem5 that this write request
+              // was not satisfied locally but has now
+              // been satisfied through the coherence interface
+              assert(is_valid(entry));
+              cache.setMRU(entry);
+              dma_sequencer.ackCallback(LineAddress);
+              reqfrom_in.dequeue(clockEdge());
+            }
+            else if (entry.acksExpectedL1 != entry.acksReceivedL1)  {
+              setState(tbe, entry, LineAddress, State:S_store_GetM_Ack_AD);
+              reqfrom_in.dequeue(clockEdge());
+            }
+          } else if (in_msg.Type == CoherenceMessageType:GetM_Ack_D) {
+            entry.acksReceivedL1 := 0;
+            entry.acksExpectedL1 := 0;
+            setState(tbe, entry, LineAddress, State:M);
+            // Signal to gem5 that this write request
+            // was not satisfied locally but has now
+            // been satisfied through the coherence interface
+            assert(is_valid(entry));
+            cache.setMRU(entry);
+            dma_sequencer.ackCallback(LineAddress);
+            reqfrom_in.dequeue(clockEdge());
+          } else if (in_msg.Type == CoherenceMessageType:Inv) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:Inv_Ack;
+              out_msg.Sender := machineID;
+              out_msg.cl := entry.clL1;
+            }
+            setState(tbe, entry, LineAddress, State:I_store);
+            reqfrom_in.dequeue(clockEdge());
+          } else if (in_msg.Type == CoherenceMessageType:Inv_Ack) {
+            entry.acksReceivedL1 := entry.acksReceivedL1+1;
+            setState(tbe, entry, LineAddress, State:S_store);
+            reqfrom_in.dequeue(clockEdge());
+          } else {
+            // stall
+          }
+        } else if (st == State:S_store_GetM_Ack_AD) {      
+          if (in_msg.Type == CoherenceMessageType:Inv_Ack) {
+            entry.acksReceivedL1 := entry.acksReceivedL1+1;
+            if (entry.acksExpectedL1 == entry.acksReceivedL1)  {
+              entry.acksReceivedL1 := 0;
+              entry.acksExpectedL1 := 0;
+              setState(tbe, entry, LineAddress, State:M);
+              // Signal to gem5 that this write request
+              // was not satisfied locally but has now
+              // been satisfied through the coherence interface
+              assert(is_valid(entry));
+              cache.setMRU(entry);
+              dma_sequencer.ackCallback(LineAddress);
+              reqfrom_in.dequeue(clockEdge());
+            }
+            else if (entry.acksExpectedL1 != entry.acksReceivedL1)  {
+              setState(tbe, entry, LineAddress, State:S_store_GetM_Ack_AD);
+              reqfrom_in.dequeue(clockEdge());
+            }
+          } else {
+            // stall
+          }
+        } else {
+          // stall
+        }
+      }
+    }
+  }
+  
+  in_port(respfrom_in, CoherenceMessage, respFrom) {
+    if (respfrom_in.isReady(clockEdge())) {
+      peek (respfrom_in, CoherenceMessage) {
+        TBE tbe := TBEs[in_msg.LineAddress];
+        Entry entry := getDMAEntry(in_msg.LineAddress);
+        State st := getState(tbe, entry, in_msg.LineAddress);
+        Addr LineAddress := in_msg.LineAddress;
+        if (st == State:I) {
+          // stall
+        } else if (st == State:I_load) {      
+          if (in_msg.Type == CoherenceMessageType:GetS_Ack) {
+            entry.clL1 := in_msg.cl;
+            setState(tbe, entry, LineAddress, State:S);
+            // Signal to gem5 that this read request
+            // was not satisfied locally but has now
+            // been satisfied through the coherence interface
+            assert(is_valid(entry));
+            cache.setMRU(entry);
+            dma_sequencer.dataCallback(entry.clL1, LineAddress);
+            respfrom_in.dequeue(clockEdge());
+          } else {
+            // stall
+          }
+        } else if (st == State:I_store) {      
+          if (in_msg.Type == CoherenceMessageType:GetM_Ack_AD) {
+            entry.acksExpectedL1 := in_msg.acksExpected;
+            entry.clL1 := in_msg.cl;
+            if (entry.acksExpectedL1 == entry.acksReceivedL1)  {
+              entry.acksReceivedL1 := 0;
+              entry.acksExpectedL1 := 0;
+              setState(tbe, entry, LineAddress, State:M);
+              // Signal to gem5 that this write request
+              // was not satisfied locally but has now
+              // been satisfied through the coherence interface
+              assert(is_valid(entry));
+              cache.setMRU(entry);
+              dma_sequencer.ackCallback(LineAddress);
+              respfrom_in.dequeue(clockEdge());
+            }
+            else if (entry.acksExpectedL1 != entry.acksReceivedL1)  {
+              setState(tbe, entry, LineAddress, State:I_store_GetM_Ack_AD);
+              respfrom_in.dequeue(clockEdge());
+            }
+          } else if (in_msg.Type == CoherenceMessageType:GetM_Ack_D) {
+            entry.clL1 := in_msg.cl;
+            entry.acksReceivedL1 := 0;
+            entry.acksExpectedL1 := 0;
+            setState(tbe, entry, LineAddress, State:M);
+            // Signal to gem5 that this write request
+            // was not satisfied locally but has now
+            // been satisfied through the coherence interface
+            assert(is_valid(entry));
+            cache.setMRU(entry);
+            dma_sequencer.ackCallback(LineAddress);
+            respfrom_in.dequeue(clockEdge());
+          } else if (in_msg.Type == CoherenceMessageType:Inv_Ack) {
+            entry.acksReceivedL1 := entry.acksReceivedL1+1;
+            setState(tbe, entry, LineAddress, State:I_store);
+            respfrom_in.dequeue(clockEdge());
+          } else {
+            // stall
+          }
+        } else if (st == State:I_store_GetM_Ack_AD) {      
+          if (in_msg.Type == CoherenceMessageType:Inv_Ack) {
+            entry.acksReceivedL1 := entry.acksReceivedL1+1;
+            if (entry.acksExpectedL1 == entry.acksReceivedL1)  {
+              entry.acksReceivedL1 := 0;
+              entry.acksExpectedL1 := 0;
+              setState(tbe, entry, LineAddress, State:M);
+              // Signal to gem5 that this write request
+              // was not satisfied locally but has now
+              // been satisfied through the coherence interface
+              assert(is_valid(entry));
+              cache.setMRU(entry);
+              dma_sequencer.ackCallback(LineAddress);
+              respfrom_in.dequeue(clockEdge());
+            }
+            else if (entry.acksExpectedL1 != entry.acksReceivedL1)  {
+              setState(tbe, entry, LineAddress, State:I_store_GetM_Ack_AD);
+              respfrom_in.dequeue(clockEdge());
+            }
+          } else {
+            // stall
+          }
+        } else if (st == State:I_x_M_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Put_Ack) {
+            setState(tbe, entry, LineAddress, State:I);
+            trigger(Event:deallocrespfrom_in, LineAddress, entry, tbe);
+          } else {
+            // stall
+          }
+        } else if (st == State:I_x_S_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Put_Ack) {
+            setState(tbe, entry, LineAddress, State:I);
+            trigger(Event:deallocrespfrom_in, LineAddress, entry, tbe);
+          } else {
+            // stall
+          }
+        } else if (st == State:M) {      
+          if (in_msg.Type == CoherenceMessageType:Fwd_GetM) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:GetM_Ack_D;
+              out_msg.Sender := machineID;
+              out_msg.cl := entry.clL1;
+            }
+            setState(tbe, entry, LineAddress, State:I);
+            trigger(Event:deallocrespfrom_in, LineAddress, entry, tbe);
+          } else if (in_msg.Type == CoherenceMessageType:Fwd_GetS) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:GetS_Ack;
+              out_msg.Sender := machineID;
+              out_msg.cl := entry.clL1;
+            }
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:WB;
+              out_msg.Sender := machineID;
+              out_msg.cl := entry.clL1;
+            }
+            setState(tbe, entry, LineAddress, State:S);
+            respfrom_in.dequeue(clockEdge());
+          } else {
+            // stall
+          }
+        } else if (st == State:M_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Fwd_GetM) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:GetM_Ack_D;
+              out_msg.Sender := machineID;
+              out_msg.cl := entry.clL1;
+            }
+            setState(tbe, entry, LineAddress, State:I_x_M_evict);
+            respfrom_in.dequeue(clockEdge());
+          } else if (in_msg.Type == CoherenceMessageType:Fwd_GetS) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:GetS_Ack;
+              out_msg.Sender := machineID;
+              out_msg.cl := entry.clL1;
+            }
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:WB;
+              out_msg.Sender := machineID;
+              out_msg.cl := entry.clL1;
+            }
+            setState(tbe, entry, LineAddress, State:S_evict);
+            respfrom_in.dequeue(clockEdge());
+          } else if (in_msg.Type == CoherenceMessageType:Put_Ack) {
+            setState(tbe, entry, LineAddress, State:I);
+            trigger(Event:deallocrespfrom_in, LineAddress, entry, tbe);
+          } else {
+            // stall
+          }
+        } else if (st == State:S) {      
+          if (in_msg.Type == CoherenceMessageType:Inv) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:Inv_Ack;
+              out_msg.Sender := machineID;
+              out_msg.cl := entry.clL1;
+            }
+            setState(tbe, entry, LineAddress, State:I);
+            trigger(Event:deallocrespfrom_in, LineAddress, entry, tbe);
+          } else {
+            // stall
+          }
+        } else if (st == State:S_evict) {      
+          if (in_msg.Type == CoherenceMessageType:Inv) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:Inv_Ack;
+              out_msg.Sender := machineID;
+              out_msg.cl := entry.clL1;
+            }
+            setState(tbe, entry, LineAddress, State:I_x_S_evict);
+            respfrom_in.dequeue(clockEdge());
+          } else if (in_msg.Type == CoherenceMessageType:Put_Ack) {
+            setState(tbe, entry, LineAddress, State:I);
+            trigger(Event:deallocrespfrom_in, LineAddress, entry, tbe);
+          } else {
+            // stall
+          }
+        } else if (st == State:S_store) {      
+          if (in_msg.Type == CoherenceMessageType:GetM_Ack_AD) {
+            entry.acksExpectedL1 := in_msg.acksExpected;
+            entry.clL1 := in_msg.cl;
+            if (entry.acksExpectedL1 == entry.acksReceivedL1)  {
+              entry.acksReceivedL1 := 0;
+              entry.acksExpectedL1 := 0;
+              setState(tbe, entry, LineAddress, State:M);
+              // Signal to gem5 that this write request
+              // was not satisfied locally but has now
+              // been satisfied through the coherence interface
+              assert(is_valid(entry));
+              cache.setMRU(entry);
+              dma_sequencer.ackCallback(LineAddress);
+              respfrom_in.dequeue(clockEdge());
+            }
+            else if (entry.acksExpectedL1 != entry.acksReceivedL1)  {
+              setState(tbe, entry, LineAddress, State:S_store_GetM_Ack_AD);
+              respfrom_in.dequeue(clockEdge());
+            }
+          } else if (in_msg.Type == CoherenceMessageType:GetM_Ack_D) {
+            entry.acksReceivedL1 := 0;
+            entry.acksExpectedL1 := 0;
+            setState(tbe, entry, LineAddress, State:M);
+            // Signal to gem5 that this write request
+            // was not satisfied locally but has now
+            // been satisfied through the coherence interface
+            assert(is_valid(entry));
+            cache.setMRU(entry);
+            dma_sequencer.ackCallback(LineAddress);
+            respfrom_in.dequeue(clockEdge());
+          } else if (in_msg.Type == CoherenceMessageType:Inv) {
+            enqueue(respto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(in_msg.Sender);
+              out_msg.Type := CoherenceMessageType:Inv_Ack;
+              out_msg.Sender := machineID;
+              out_msg.cl := entry.clL1;
+            }
+            setState(tbe, entry, LineAddress, State:I_store);
+            respfrom_in.dequeue(clockEdge());
+          } else if (in_msg.Type == CoherenceMessageType:Inv_Ack) {
+            entry.acksReceivedL1 := entry.acksReceivedL1+1;
+            setState(tbe, entry, LineAddress, State:S_store);
+            respfrom_in.dequeue(clockEdge());
+          } else {
+            // stall
+          }
+        } else if (st == State:S_store_GetM_Ack_AD) {      
+          if (in_msg.Type == CoherenceMessageType:Inv_Ack) {
+            entry.acksReceivedL1 := entry.acksReceivedL1+1;
+            if (entry.acksExpectedL1 == entry.acksReceivedL1)  {
+              entry.acksReceivedL1 := 0;
+              entry.acksExpectedL1 := 0;
+              setState(tbe, entry, LineAddress, State:M);
+              // Signal to gem5 that this write request
+              // was not satisfied locally but has now
+              // been satisfied through the coherence interface
+              assert(is_valid(entry));
+              cache.setMRU(entry);
+              dma_sequencer.ackCallback(LineAddress);
+              respfrom_in.dequeue(clockEdge());
+            }
+            else if (entry.acksExpectedL1 != entry.acksReceivedL1)  {
+              setState(tbe, entry, LineAddress, State:S_store_GetM_Ack_AD);
+              respfrom_in.dequeue(clockEdge());
+            }
+          } else {
+            // stall
+          }
+        } else {
+          // stall
+        }
+      }
+    }
+  }
+  
+  in_port(mandatory_in, SequencerMsg, mandatoryQueue) {
+    if (mandatory_in.isReady(clockEdge())) {
+      peek(mandatory_in, SequencerMsg, block_on="LineAddress") {
+        Entry entry := getDMAEntry(in_msg.LineAddress);
+        TBE tbe := TBEs[in_msg.LineAddress];
+  
+        if (is_invalid(entry) &&
+            cache.cacheAvail(in_msg.LineAddress) == false ) {
+          Addr LineAddress := cache.cacheProbe(in_msg.LineAddress);
+          Entry entry := getDMAEntry(LineAddress);
+          TBE tbe := TBEs[LineAddress];
+          State st := getState(tbe, entry, LineAddress);
+          DPRINTF(RubySlicc, "DMA Evicting at 0x%x\n", LineAddress);
+        
+          if (st == State:M) {
+            enqueue(reqto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:PutM;
+              out_msg.Sender := machineID;
+              out_msg.cl := entry.clL1;
+            }
+            setState(tbe, entry, LineAddress, State:M_evict);
+            // If necessary, forward the eviction to the CPU so that it can squash speculation
+          } else if (st == State:S) {
+            enqueue(reqto_out, CoherenceMessage, responseLatency) {
+              out_msg.LineAddress := LineAddress;
+              out_msg.MessageSize := MessageSizeType:Data;
+              out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+              out_msg.Type := CoherenceMessageType:PutS;
+              out_msg.Sender := machineID;
+            }
+            setState(tbe, entry, LineAddress, State:S_evict);
+          } else {
+            // stall
+          }
+        } else {
+          State st := getState(tbe, entry, in_msg.LineAddress);
+          Addr LineAddress := in_msg.LineAddress;
+          if (in_msg.Type == SequencerRequestType:LD) {
+            DPRINTF(RubySlicc, "DMA Loading at 0x%x\n", LineAddress);
+            if (st == State:I) {
+              trigger(Event:allocI_load, LineAddress, entry, tbe);
+            } else if (st == State:M) {
+              trigger(Event:MloadMEvent, LineAddress, entry, tbe);
+            } else if (st == State:S) {
+              trigger(Event:SloadSEvent, LineAddress, entry, tbe);
+            } else {
+              // stall
+            }
+          } else if (in_msg.Type == SequencerRequestType:ST) {
+            DPRINTF(RubySlicc, "DMA Storing at 0x%x\n", LineAddress);
+            if (st == State:I) {
+              trigger(Event:allocI_store, LineAddress, entry, tbe);
+            } else if (st == State:M) {
+              trigger(Event:MstoreMEvent, LineAddress, entry, tbe);
+            } else if (st == State:S) {
+              enqueue(reqto_out, CoherenceMessage, responseLatency) {
+                out_msg.LineAddress := LineAddress;
+                out_msg.MessageSize := MessageSizeType:Data;
+                out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+                out_msg.Type := CoherenceMessageType:Upgrade;
+                out_msg.Sender := machineID;
+              }
+              entry.acksReceivedL1 := 0;
+              setState(tbe, entry, LineAddress, State:S_store);
+              mandatory_in.dequeue(clockEdge());
+            } else {
+              // stall
+            }
+          } else {
+            error("Unexpected message type from processor");
+          }
+        }
+      }
+    }
+  }
+  //SLICC.ModularSLICC.cache.GenCacheActions
+  action(deallocEntry, "d", desc="Deallocate an entry") {
+      DPRINTF(RubySlicc, "DMA deallocEntry at 0x%x\n", address);
+      assert(is_valid(cache_entry));
+      cache.deallocate(address);
+      unset_cache_entry();
+  }
+  action(allocEntry, "a", desc="Allocate an entry") {
+     DPRINTF(RubySlicc, "DMA allocEntry at 0x%x\n", address);
+     assert(is_invalid(cache_entry));
+     assert(cache.cacheAvail(address));
+     set_cache_entry(cache.allocate(address, new Entry));
+  }
+  action(loadHit, "Lh", desc="Callback local load hit.") {
+    DPRINTF(RubySlicc, "DMA loadHit at 0x%x\n", address);
+    // Signal to gem5 that this load/read access was a hit locally
+    assert(is_valid(cache_entry));
+    cache.setMRU(cache_entry);
+    dma_sequencer.dataCallback(cache_entry.clL1, address);
+  }
+  
+  action(storeHit, "Sh", desc="Callback local store hit.") {
+    DPRINTF(RubySlicc, "DMA storeHit at 0x%x\n", address);
+    // Signal to gem5 that this store access was a hit locally
+    dma_sequencer.ackCallback(address);
+  }
+  
+  action(popmandatory_in, "pmandatory_in0", desc="Pop the mandatory_in queue.") {
+      // Sometimes we need to be able to pop a queue/in_port from within a transition
+      // rather than from within the in_port itself. Thus, we need an action for this,
+      // since transitions cannot execute non-action functions.
+      mandatory_in.dequeue(clockEdge());
+  }
+  action(popfwdfrom_in, "pfwdfrom_in0", desc="Pop the fwdfrom_in queue.") {
+      // Sometimes we need to be able to pop a queue/in_port from within a transition
+      // rather than from within the in_port itself. Thus, we need an action for this,
+      // since transitions cannot execute non-action functions.
+      fwdfrom_in.dequeue(clockEdge());
+  }
+  action(popreqfrom_in, "preqfrom_in0", desc="Pop the reqfrom_in queue.") {
+      // Sometimes we need to be able to pop a queue/in_port from within a transition
+      // rather than from within the in_port itself. Thus, we need an action for this,
+      // since transitions cannot execute non-action functions.
+      reqfrom_in.dequeue(clockEdge());
+  }
+  action(poprespfrom_in, "prespfrom_in0", desc="Pop the respfrom_in queue.") {
+      // Sometimes we need to be able to pop a queue/in_port from within a transition
+      // rather than from within the in_port itself. Thus, we need an action for this,
+      // since transitions cannot execute non-action functions.
+      respfrom_in.dequeue(clockEdge());
+  }
+  action(actionI_I_load, "II0", desc="TODO") {
+    //DPRINTF(RubySlicc, "actionI_I_load\n");
+    peek(mandatory_in, SequencerMsg) {
+      Addr LineAddress := in_msg.LineAddress;
+      enqueue(reqto_out, CoherenceMessage, responseLatency) {
+        out_msg.LineAddress := LineAddress;
+        out_msg.MessageSize := MessageSizeType:Data;
+        out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+        out_msg.Type := CoherenceMessageType:GetS;
+        out_msg.Sender := machineID;
+      }
+    }
+  }
+  action(actionI_I_store, "II1", desc="TODO") {
+    //DPRINTF(RubySlicc, "actionI_I_store\n");
+    peek(mandatory_in, SequencerMsg) {
+      Entry entry := cache_entry;
+      Addr LineAddress := in_msg.LineAddress;
+      enqueue(reqto_out, CoherenceMessage, responseLatency) {
+        out_msg.LineAddress := LineAddress;
+        out_msg.MessageSize := MessageSizeType:Data;
+        out_msg.Destination.add(mapAddressToMachine(LineAddress, MachineType:Directory));
+        out_msg.Type := CoherenceMessageType:GetM;
+        out_msg.Sender := machineID;
+      }
+      entry.acksReceivedL1 := 0;
+    }
+  }
+  //SLICC.ModularSLICC.cache.GenCacheTransitions
+  transition({I}, deallocfwdfrom_in) {
+      deallocEntry;
+      popfwdfrom_in;
+  }
+  transition({I}, deallocreqfrom_in) {
+      deallocEntry;
+      popreqfrom_in;
+  }
+  transition({I}, deallocrespfrom_in) {
+      deallocEntry;
+      poprespfrom_in;
+  }
+  transition(I, allocI_store, I_store) {
+      allocEntry;
+      actionI_I_store;
+      popmandatory_in;
+  }
+  transition(I, allocI_load, I_load) {
+      allocEntry;
+      actionI_I_load;
+      popmandatory_in;
+  }
+  transition(S, SloadSEvent, S) {
+    loadHit;
+    popmandatory_in;
+  }
+  transition(M, MloadMEvent, M) {
+    loadHit;
+    popmandatory_in;
+  }
+  transition(M, MstoreMEvent, M) {
+    storeHit;
+    popmandatory_in;
+  }
+}
+// EOF
