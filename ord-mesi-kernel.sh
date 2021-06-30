@@ -1,1 +1,0 @@
-nice ./build/ORD_MESI/gem5.opt configs/example/fs.py --ruby --cpu-type TimingSimpleCPU --kernel=/home/theo/gem5_copy/full_system_images/binaries/x86_64-vmlinux-5.4.49 --disk=/home/theo/gem5_copy/full_system_images/disks/splashimg --num-cpus=4 --num-dirs=4 --network=simple --topology=Mesh_XY --mesh-rows=4

@@ -1,0 +1,27 @@
+All available in simlarge, or simsmall. All size 4.
+
+blackscholes
+bodytrack
+canneal
+dedup
+facesim
+ferret
+fluidanimate
+freqmine
+raytrace
+splash2x.barnes
+splash2x.cholesky
+splash2x.fft
+splash2x.fmm
+splash2x.lu_cb
+splash2x.lu_ncb
+splash2x.ocean_cp
+splash2x.ocean_ncp
+splash2x.radiosity
+splash2x.radix
+splash2x.water_nsquared
+splash2x.water_spatial
+streamcluster
+swaptions
+vips
+x264
