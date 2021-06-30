@@ -1,0 +1,3 @@
+CD into this directory. Then run the following:
+
+  bash Run_Experiment.sh {Protocol} {Workload} {Number Procs/Dirs} {Number of Rows} {Sim Size}

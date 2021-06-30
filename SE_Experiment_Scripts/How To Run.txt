@@ -1,0 +1,3 @@
+CD into this directory, and run the following command:
+
+  bash {Workload} {Protocol}

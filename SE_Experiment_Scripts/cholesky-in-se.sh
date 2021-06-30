@@ -9,4 +9,4 @@ P_PATH=~/parsec-benchmark
 
 # 8x8
 SIMSMALL="$P_PATH/ext/splash2x/kernels/cholesky/run/tk29.O"
-build/$1/gem5.opt --outdir=cholesky-se-$1 configs/example/se.py --num-cpus=64 --num-dirs=64 --network=simple --topology=Mesh_XY --mesh-rows=8 --cpu-type TimingSimpleCPU --ruby --cmd="$P_PATH/ext/splash2x/kernels/cholesky/inst/amd64-linux.gcc/bin/cholesky" --options="-p64" < $SIMSMALL 
+../build/$1/gem5.opt --outdir=../Experiment_Results/$1/cholesky-se-$1 ../configs/example/se.py --num-cpus=64 --num-dirs=64 --network=simple --topology=Mesh_XY --mesh-rows=8 --cpu-type TimingSimpleCPU --ruby --cmd="$P_PATH/ext/splash2x/kernels/cholesky/inst/amd64-linux.gcc/bin/cholesky" --options="-p64" < $SIMSMALL 

@@ -8,4 +8,4 @@ P_PATH=/home/theo/parsec-benchmark
 #build/$1/gem5.opt configs/example/se.py -n $(($N_THREADS+1)) --ruby --cmd="$P_PATH/ext/splash2x/apps/ocean_cp/inst/amd64-linux.gcc/bin/ocean_cp" --options="$SIMSMALL -p$N_THREADS"
 
 # 8x8
-build/$1/gem5.opt --outdir=ocean-se-$1 configs/example/se.py --num-cpus=64 --num-dirs=64 --network=simple --topology=Mesh_XY --mesh-rows=8 --cpu-type TimingSimpleCPU --ruby --cmd="$P_PATH/ext/splash2x/apps/ocean_cp/inst/amd64-linux.gcc/bin/ocean_cp" --options="$SIMSMALL -p64"
+../build/$1/gem5.opt --outdir=../Experiment_Results/$1/ocean-se-$1 ../configs/example/se.py --num-cpus=64 --num-dirs=64 --network=simple --topology=Mesh_XY --mesh-rows=8 --cpu-type TimingSimpleCPU --ruby --cmd="$P_PATH/ext/splash2x/apps/ocean_cp/inst/amd64-linux.gcc/bin/ocean_cp" --options="$SIMSMALL -p64"

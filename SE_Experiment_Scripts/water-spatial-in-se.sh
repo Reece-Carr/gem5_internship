@@ -9,4 +9,4 @@ P_PATH=~/parsec-benchmark
 
 # 8x8
 SIMSMALL="$P_PATH/ext/splash2x/apps/water_spatial/run/input_64"
-build/$1/gem5.opt --outdir=water_spatial-se-$1 configs/example/se.py --num-cpus=64 --num-dirs=64 --network=simple --topology=Mesh_XY --mesh-rows=8 --cpu-type TimingSimpleCPU --ruby --cmd="$P_PATH/ext/splash2x/apps/water_spatial/inst/amd64-linux.gcc/bin/water_spatial" --options="64" < $SIMSMALL 
+../build/$1/gem5.opt --outdir=../Experiment_Results/$1/water-spatial-se-$1 ../configs/example/se.py --num-cpus=64 --num-dirs=64 --network=simple --topology=Mesh_XY --mesh-rows=8 --cpu-type TimingSimpleCPU --ruby --cmd="$P_PATH/ext/splash2x/apps/water_spatial/inst/amd64-linux.gcc/bin/water_spatial" --options="64" < $SIMSMALL 
